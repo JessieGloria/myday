@@ -153,14 +153,46 @@ function toast(msg, undo) {
 const fail = e => toast(e.message || "Something went wrong");
 
 /* ---------- sheet ---------- */
+/* Bottom sheets glide up from the bottom, can be swiped down, and glide away when closed. */
+let closeTimer = null;
 function openSheet(html, onMount) {
   const root = $("#sheet-root");
-  root.innerHTML = `<div class="scrim"><div class="sheet" role="dialog"><div class="grab"></div>${html}</div></div>`;
-  const scrim = $(".scrim", root);
+  let scrim = $(".scrim", root);
+  if (scrim && !scrim.classList.contains("closing")) {
+    // a sheet is already open: swap its content in place with a soft fade instead of re-opening
+    const sh = $(".sheet", scrim);
+    sh.innerHTML = `<div class="grab"></div>${html}`; sh.scrollTop = 0;
+    sh.classList.remove("swap"); void sh.offsetWidth; sh.classList.add("swap");
+    $("#fab")?.classList.remove("open");
+    onMount && onMount(sh); return;
+  }
+  clearTimeout(closeTimer);
+  root.innerHTML = `<div class="scrim"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`;
+  scrim = $(".scrim", root);
+  const sh = $(".sheet", scrim);
+  document.body.classList.add("sheet-open");
+  requestAnimationFrame(() => requestAnimationFrame(() => scrim.classList.add("open")));
   scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
-  onMount && onMount($(".sheet", root));
+  // swipe down to close
+  let y0 = null, dy = 0, t0 = 0;
+  sh.addEventListener("touchstart", e => { if (sh.scrollTop > 0 || e.target.closest("input,textarea,select")) { y0 = null; return; } y0 = e.touches[0].clientY; dy = 0; t0 = Date.now(); }, { passive: true });
+  sh.addEventListener("touchmove", e => { if (y0 === null) return; dy = e.touches[0].clientY - y0;
+    if (dy > 0) { sh.style.transition = "none"; sh.style.transform = `translateY(${dy}px)`; scrim.style.setProperty("--dim", String(Math.max(0, .38 - dy / 900))); } }, { passive: true });
+  sh.addEventListener("touchend", () => { if (y0 === null) return; const fast = dy > 40 && Date.now() - t0 < 250; y0 = null;
+    sh.style.transition = ""; scrim.style.removeProperty("--dim");
+    if (dy > 110 || fast) closeSheet(); else sh.style.transform = ""; });
+  onMount && onMount(sh);
 }
-const closeSheet = () => { $("#sheet-root").innerHTML = ""; };
+function closeSheet() {
+  const scrim = $("#sheet-root .scrim");
+  $("#fab")?.classList.remove("open");
+  document.body.classList.remove("sheet-open");
+  if (!scrim || scrim.classList.contains("closing")) return;
+  const sh = $(".sheet", scrim); if (sh) sh.style.transform = "";
+  scrim.classList.remove("open"); scrim.classList.add("closing");
+  closeTimer = setTimeout(() => { if (scrim.isConnected) scrim.remove(); }, 320);
+}
+
 
 /* ---------- render root ---------- */
 function render() {
@@ -186,7 +218,7 @@ function nav() {
 }
 function bindCommon() {
   document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.paint = null; render(); window.scrollTo(0, 0); });
-  $("#fab").onclick = quickAdd;
+  $("#fab").onclick = () => { const open = $("#sheet-root .scrim:not(.closing)"); if (open) closeSheet(); else quickAdd(); };
   const g = $("#gear"); if (g) g.onclick = () => ({ calendar: settingsSheet }[S.tab] || todaySettings)();
 }
 
@@ -504,6 +536,7 @@ function viewSoon(title, text, step) {
 
 /* ---------- quick add ---------- */
 function quickAdd() {
+  setTimeout(() => $("#fab")?.classList.add("open"), 0);
   openSheet(`<h2 class="h2" style="margin-bottom:14px">Quick add</h2><div class="qa">
     <button id="qp">${I.plan}Plan</button><button id="qt">${I.todo}To do</button><button id="qb">${I.cart}To buy</button>
     <button id="qe">${I.coin}Money</button><button id="ql">${I.book}Topic</button><button id="qr">${I.cal}Reminder</button></div>`, () => {
@@ -534,7 +567,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 8 (bank balances)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 9 (smooth sheets)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);

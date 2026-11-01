@@ -313,3 +313,27 @@ button:active{transform:scale(.96)}
 .accdot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}
 .accbal{font-family:Nunito,Inter,sans-serif;font-weight:800;font-size:18px;margin-top:4px}
 .accbal.neg{color:#C05050}
+
+/* ===== smooth, intentional sheets ===== */
+.scrim{animation:none;background:rgba(20,22,43,0);transition:background-color .38s cubic-bezier(.32,.72,0,1);-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}
+.scrim.open{background:rgba(20,22,43,var(--dim,.38));-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+.scrim.closing{background:rgba(20,22,43,0);transition-duration:.3s;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}
+.sheet{animation:none!important;transform:translateY(105%);transition:transform .46s cubic-bezier(.32,.72,0,1);will-change:transform;box-shadow:0 -8px 30px rgba(20,22,43,.12)}
+.scrim.open .sheet{transform:translateY(0)}
+.scrim.closing .sheet{transform:translateY(105%)!important;transition:transform .3s cubic-bezier(.4,0,.9,.6)}
+.grab{width:42px;height:5px;padding:0;margin:2px auto 14px;cursor:grab}
+.sheet.swap>*:not(.grab){animation:swapin .32s cubic-bezier(.32,.72,0,1) both}
+@keyframes swapin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.scrim.open .sheet>*:not(.grab){animation:swapin .42s .06s cubic-bezier(.32,.72,0,1) both}
+.qa button{opacity:0;transform:translateY(12px) scale(.96)}
+.scrim.open .qa button,.sheet.swap .qa button{animation:qain .4s cubic-bezier(.32,.72,0,1) forwards}
+.qa button:nth-child(2){animation-delay:.04s!important}.qa button:nth-child(3){animation-delay:.08s!important}.qa button:nth-child(4){animation-delay:.12s!important}.qa button:nth-child(5){animation-delay:.16s!important}.qa button:nth-child(6){animation-delay:.2s!important}
+@keyframes qain{to{opacity:1;transform:none}}
+body.sheet-open{overflow:hidden}
+.fab{transition:transform .38s cubic-bezier(.32,.72,0,1),box-shadow .3s,z-index 0s}
+.fab.open{z-index:45;transform:rotate(45deg);box-shadow:0 6px 22px rgba(20,22,43,.3)}
+.fab:active{transform:scale(.9)}
+.fab.open:active{transform:rotate(45deg) scale(.9)}
+.toast{transition:opacity .28s cubic-bezier(.32,.72,0,1),transform .28s cubic-bezier(.32,.72,0,1)}
+@media (prefers-reduced-motion: reduce){.sheet,.scrim{transition:none!important}.qa button{opacity:1;transform:none}}
+.qa{margin-bottom:74px}

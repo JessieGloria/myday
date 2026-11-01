@@ -41,14 +41,15 @@ async function syncStage(t) {
   Object.assign(t, await db.update("myday_topics", t.id, { stage: ns, done_at: ns === 4 ? (t.done_at || nowIso()) : null }));
   return ns - was;
 }
-const studiedDays = () => new Set(S.sessions.map(x => x.date));
+const liveSessions = () => S.sessions.filter(x => S.topics.some(t => t.id === x.topic_id));
+const studiedDays = () => new Set(liveSessions().map(x => x.date));
 function streak() {
   const days = studiedDays(); let d = today(), n = 0;
   if (!days.has(d)) d = addDays(d, -1);
   while (days.has(d)) { n++; d = addDays(d, -1); }
   return n;
 }
-window.MD.studyMinutesIn = m => (S.sessions || []).filter(x => x.date.startsWith(m)).reduce((s, x) => s + x.minutes, 0);
+window.MD.studyMinutesIn = m => (S.sessions || []).filter(x => (S.topics || []).some(t => t.id === x.topic_id)).filter(x => x.date.startsWith(m)).reduce((s, x) => s + x.minutes, 0);
 
 /* ---------- the plant drawings: seed → sprout → leafy → budding → bloom ---------- */
 function plant(stage, petal = "#E8A0A0", w = 64, still = false) {
@@ -76,7 +77,7 @@ function viewLearn() {
   const timer = getTimer(), running = timer && S.topics.find(t => t.id === timer.id);
   const growing = S.topics.filter(t => stageOf(t) < 4), garden = S.topics.filter(t => stageOf(t) >= 4);
   const wk = weekOf(today()), days = studiedDays();
-  const weekMins = S.sessions.filter(x => x.date >= wk).reduce((s, x) => s + x.minutes, 0);
+  const weekMins = liveSessions().filter(x => x.date >= wk).reduce((s, x) => s + x.minutes, 0);
   const st = streak();
   return `${learnHeader()}
   ${running ? `<div class="card status st-oncall" style="margin-bottom:12px"><div style="flex:none">${plant(stageOf(running), colorOf(running), 44)}</div><div style="flex:1;min-width:0"><div class="h2">Studying ${esc(running.title)}</div><div class="small muted" id="tclock">just started</div></div><button class="btn sun" id="tstop">Done</button></div>` : ""}
