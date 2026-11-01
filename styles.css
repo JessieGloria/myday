@@ -254,3 +254,55 @@ button:active{transform:scale(.96)}
 .raindrop{position:fixed;width:5px;height:9px;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;background:#9DC4F0;z-index:80;pointer-events:none;animation:rain .7s ease-in forwards}
 @keyframes rain{from{transform:translateY(-18px);opacity:0}30%{opacity:1}to{transform:translateY(34px);opacity:0}}
 .pot.pop svg{animation:pop .5s cubic-bezier(.3,1.7,.5,1)}
+
+/* ===== savings jars ===== */
+.jarcard{padding:12px 14px}.jarcard+.jarcard{margin-top:10px}
+.jarmain{display:flex;gap:12px;align-items:center;width:100%;text-align:left}
+.jarbox{flex:none;width:74px;height:74px;border-radius:20px;background:var(--lav);display:flex;align-items:center;justify-content:center}
+.jarfill{transition:transform 1s cubic-bezier(.2,.8,.2,1)}
+.wrap.enter .jarfill{animation:jarup 1.2s .15s cubic-bezier(.2,.8,.2,1) both}
+@keyframes jarup{from{transform:translateY(66px)}}
+.a-wavex{animation:wavex 2.4s linear infinite}
+@keyframes wavex{to{transform:translateX(-32px)}}
+.pctbadge{font-size:12px;font-weight:700;background:var(--sunbg);color:var(--sunink);padding:2px 8px;border-radius:20px;font-family:Nunito,Inter,sans-serif}
+/* ===== wishlist gifts ===== */
+.gifts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.gift{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:12px 10px 10px;box-shadow:0 2px 12px rgba(43,48,96,.05);display:flex;flex-direction:column;align-items:center}
+.giftmain{width:100%;display:flex;flex-direction:column;align-items:center;text-align:center;gap:2px}
+.giftmain svg{margin-bottom:4px}
+.gift .title{font-size:13.5px;font-weight:600;overflow-wrap:anywhere}
+.gift.got{background:var(--rosebg);border:none}
+.giftbtn{color:var(--peri);margin-top:6px;font-weight:600}
+.wrap.enter .gift svg{animation:wiggle 1.2s .3s ease-in-out}
+@keyframes wiggle{20%{transform:rotate(-8deg)}40%{transform:rotate(7deg)}60%{transform:rotate(-4deg)}80%{transform:rotate(2deg)}}
+/* ===== life admin calendars ===== */
+.admincard{display:flex;align-items:center;gap:8px;padding:12px 12px 12px 14px}.admincard+.admincard{margin-top:10px}
+.adminmain{display:flex;gap:12px;align-items:center;flex:1;min-width:0;text-align:left}
+.bigdays{font-family:Nunito,Inter,sans-serif;font-weight:800;font-size:18px;margin:1px 0}
+.tone-late .bigdays{color:#C05050}.tone-soon .bigdays{color:#B8860B}.tone-done{opacity:.75}
+.donebtn{width:40px;height:40px;flex:none;border-radius:50%;border:2px solid var(--lav2);color:var(--lav2);display:flex;align-items:center;justify-content:center}
+.donebtn svg{width:18px;height:18px}
+.donebtn:active{background:var(--sage);border-color:var(--sage);color:#fff}
+.a-shake{animation:tilt 2.6s ease-in-out infinite;transform-origin:center}
+@keyframes tilt{0%,80%,100%{transform:rotate(0)}85%{transform:rotate(-6deg)}90%{transform:rotate(6deg)}95%{transform:rotate(-3deg)}}
+/* ===== subtopics ===== */
+.subs{margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
+.subrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:6px 2px;font-size:13.5px}
+.subrow.done .title{color:var(--ink3);text-decoration:line-through}
+.leafchk{flex:none;display:flex}
+.leafchk.pop svg{animation:pop .45s cubic-bezier(.3,1.7,.5,1)}
+.subadd{display:flex;gap:6px;margin-top:4px}
+.subadd input{flex:1;min-width:0;height:34px!important;font-size:13px!important;border-style:dashed!important}
+.subadd .btn{height:34px;font-size:12.5px}
+/* ===== books ===== */
+.bookcard{padding:12px 14px}.bookcard+.bookcard{margin-top:10px}
+.bookbox{flex:none;width:66px;height:76px;border-radius:18px;background:var(--lav);display:flex;align-items:center;justify-content:center}
+.bookbox.pop svg{animation:pop .5s cubic-bezier(.3,1.7,.5,1)}
+.ribbon{transition:d .6s}
+.wrap.enter .ribbon{animation:ribbon 1s .2s cubic-bezier(.2,.8,.2,1) both;transform-box:fill-box;transform-origin:top}
+@keyframes ribbon{from{transform:scaleY(.1)}}
+.shelf{display:flex;align-items:flex-end;gap:5px;padding:12px 12px 0;min-height:110px;background:var(--card);border-radius:22px 22px 6px 6px;border:1px solid var(--line);border-bottom:10px solid #D9C3A5;overflow-x:auto}
+.spine{flex:none;width:30px;border-radius:5px 5px 2px 2px;display:flex;align-items:center;justify-content:center;padding:6px 0;box-shadow:inset -3px 0 0 rgba(0,0,0,.06)}
+.spine span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:10.5px;font-weight:700;color:#2B3060;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-height:100%;font-family:Nunito,Inter,sans-serif}
+.wrap.enter .spine{animation:rise .5s cubic-bezier(.2,.8,.2,1) both}
+.asbcard .art{margin-right:4px}

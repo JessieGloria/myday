@@ -534,7 +534,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 6 (study garden)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 7 (jars, gifts, books)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);
@@ -585,6 +585,6 @@ document.addEventListener("touchmove", e => { if (e.touches && e.touches.length 
 let lastDay = today();
 document.addEventListener("visibilitychange", () => { if (!document.hidden && session && S.loaded) { if (today() !== lastDay) { lastDay = today(); S.planDate = lastDay; } loadAll().then(render).catch(() => {}); } });
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
-window.MD = Object.assign(window.MD, { dayInfo, setDayKind, leaveSummary, $, esc, pad, ymd, parse, addDays, today, fmtShort, relDay, nowIso, I, S, db, rest, render, openSheet, closeSheet, toast, fail, CFG });
+window.MD = Object.assign(window.MD, { replay: () => { lastTab = null; }, dayInfo, setDayKind, leaveSummary, $, esc, pad, ymd, parse, addDays, today, fmtShort, relDay, nowIso, I, S, db, rest, render, openSheet, closeSheet, toast, fail, CFG });
 window.addEventListener("DOMContentLoaded", render);
 })();

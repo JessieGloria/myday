@@ -22,6 +22,7 @@ async function loadMoney() {
     rest("GET", "myday_payee_rules?select=*")
   ]);
   S.accounts = acc; S.categories = cats; S.bills = bills; S.rules = rules;
+  S.savingTx = await db.list("myday_transactions", "type=eq.saving&select=id,amount,to_account_id,date");
   const from = monthsBack(3), cards = acc.filter(a => a.kind === "card").map(a => a.id);
   const cardQ = cards.length ? `,account_id.in.(${cards}),to_account_id.in.(${cards})` : "";
   S.tx = await db.list("myday_transactions", `or=(date.gte.${from},needs_review.is.true${cardQ})&order=date.desc,time.desc.nullslast,created_at.desc`);
@@ -46,6 +47,10 @@ function totals(m) {
   const t = monthTx(m);
   return { income: sum(t.filter(x => x.type === "income")), spent: sum(t.filter(x => x.type === "expense")), saved: sum(t.filter(x => x.type === "saving")) };
 }
+const savingsAccounts = () => S.accounts.filter(a => a.kind === "savings");
+const savingsBalance = a => Number(a.opening_balance || 0) + (S.savingTx || []).filter(t => t.to_account_id === a.id).reduce((s, t) => s + Number(t.amount), 0);
+window.MD.savingsAccounts = () => savingsAccounts().map(a => ({ a, balance: savingsBalance(a) }));
+async function refreshSaving() { S.savingTx = await db.list("myday_transactions", "type=eq.saving&select=id,amount,to_account_id,date"); }
 function cardOwed() {
   return S.accounts.filter(a => a.kind === "card").map(a => ({ a, owed: sum(S.tx.filter(t => t.type === "expense" && t.account_id === a.id)) - sum(S.tx.filter(t => t.type === "card_payment" && t.to_account_id === a.id)) }));
 }
@@ -69,7 +74,7 @@ function txRow(t) {
   const sign = t.type === "income" ? "+" : t.type === "expense" ? "−" : "→";
   const col = t.type === "income" ? "color:var(--sageink)" : t.type === "saving" || t.type === "card_payment" ? "color:var(--sunink)" : "";
   const title = t.type === "card_payment" ? `Paid ${acc(t.to_account_id)?.name || "card"}` : t.type === "saving" ? ((S.goals || []).find(g => g.id === t.goal_id)?.name || t.note || "Savings") : (t.payee || c?.name || "Expense");
-  const sub = [t.type === "saving" ? "Saved" : c?.name, a?.name, t.time ? t.time.slice(0, 5) : ""].filter(Boolean).join(" · ");
+  const sub = [t.type === "saving" ? "Saved" : c?.name, t.type === "saving" && t.to_account_id ? `${a?.name || ""} → ${acc(t.to_account_id)?.name || ""}` : a?.name, t.time ? t.time.slice(0, 5) : ""].filter(Boolean).join(" · ");
   return `<button class="item" style="width:100%;text-align:left" data-tx="${t.id}">
     <span style="width:10px;height:10px;border-radius:50%;flex:none;background:${c ? CCOL[c.color] : "var(--lav2)"}"></span>
     <div class="grow"><div class="title">${esc(title)}${t.needs_review ? ' <span class="pill warn">check me</span>' : ""}</div><div class="tiny muted">${esc(sub)}</div></div>
@@ -107,6 +112,7 @@ function viewOverview() {
       <div><div class="muted">Spent</div><div style="font-size:15px;font-weight:600;color:#F3B7B7">${rm(tt.spent)}</div></div>
       <div><div class="muted">Saved</div><div style="font-size:15px;font-weight:600;color:#F6D86B">${rm(tt.saved)}</div></div></div>
   </div>
+  ${savingsAccounts().map(a => `<button class="card between asbcard" data-savacc="${a.id}" style="margin-top:10px;width:100%;text-align:left"><div class="row">${window.ART.jar(40)}<div><div class="small muted">${esc(a.name)} savings</div><div class="h2">${rm(savingsBalance(a))}</div></div></div><span class="tiny muted">+ ${rm0(sum(monthTx(m).filter(t => t.type === "saving" && t.to_account_id === a.id)))} this month</span></button>`).join("")}
   ${owed.map(x => `<div class="card between" style="margin-top:10px"><div><div class="small muted">${esc(x.a.name)}</div><div class="h2">${rm(x.owed)} <span class="small muted" style="font-weight:400">owed</span></div></div><button class="btn" data-paycard="${x.a.id}">Pay card</button></div>`).join("")}
   ${bills.length ? `<div class="between"><div class="lbl">Bills due</div><button class="small" style="color:var(--peri)" data-mv="bills">See all</button></div>
     <div class="list">${bills.slice(0, 4).map(x => `<button class="item" style="width:100%;text-align:left" data-bill="${x.b.id}"><div class="grow"><div class="title">${esc(x.b.name)}</div><div class="tiny muted">${x.b.amount ? rm(x.b.amount) : "Amount varies"} · due ${fmtShort(x.due)}</div></div>${billPill(x)}</button>`).join("")}</div>` : ""}
@@ -143,6 +149,7 @@ function bindMoney() {
   document.querySelectorAll("[data-paybill]").forEach(b => b.onclick = () => payBill(S.bills.find(x => x.id === b.dataset.paybill)));
   document.querySelectorAll("[data-paycard]").forEach(b => b.onclick = () => txSheet(null, { type: "card_payment", to_account_id: b.dataset.paycard, amount: cardOwed().find(x => x.a.id === b.dataset.paycard)?.owed }));
   const r = $("#mreview"); if (r) r.onclick = nextReview;
+  document.querySelectorAll("[data-savacc]").forEach(b => b.onclick = () => savAccSheet(acc(b.dataset.savacc)));
   const bu = $("#mbud"); if (bu) bu.onclick = budgetSheet;
   const rc = $("#mrecap"); if (rc) rc.onclick = () => window.MD.recapSheet(S.moneyMonth < today().slice(0, 7) ? S.moneyMonth : window.MD.lastMonth());
   const ab = $("#addbill"); if (ab) ab.onclick = () => billSheet(null);
@@ -154,16 +161,18 @@ function txSheet(t, preset = {}, opts = {}) {
   const isNew = !t;
   t = t || Object.assign({ type: "expense", amount: "", date: today(), time: null, category_id: null, account_id: S.settings.default_account_id, to_account_id: null, payee: "", note: "" }, preset);
   let st = { ...t };
+  if (isNew && st.type === "saving" && !st.to_account_id) { st.to_account_id = savingsAccounts()[0]?.id || null; if (["card", "savings"].includes(acc(st.account_id)?.kind)) st.account_id = S.accounts.find(a => a.kind === "bank")?.id; }
   const draw = () => {
     const isCardPay = st.type === "card_payment";
     const catList = st.type === "income" ? incCats() : st.type === "expense" ? expCats() : [];
-    const fromAcc = S.accounts.filter(a => !isCardPay || a.kind !== "card");
+    const fromAcc = S.accounts.filter(a => a.kind !== "savings" && (!(isCardPay || st.type === "saving") || a.kind !== "card"));
     return `<div class="between"><h2 class="h2">${opts.review ? "Check this expense" : isNew ? "Add money" : "Edit"}</h2>${opts.review ? `<span class="tiny muted">${opts.review}</span>` : ""}</div>
     ${opts.review ? '<p class="small muted" style="margin:4px 0 0">Read from your screenshot. Fix anything that looks wrong.</p>' : ""}
     <div class="seg">${[["expense", "Spent"], ["income", "Income"], ["saving", "Saved"], ["card_payment", "Card bill"]].map(([k, l]) => `<button type="button" data-ty="${k}" class="${st.type === k ? "on" : ""}">${l}</button>`).join("")}</div>
     <div class="field"><label>Amount (RM)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="xa" value="${st.amount === "" || st.amount == null ? "" : Number(st.amount).toFixed(2)}" placeholder="0.00" style="font-size:20px;font-weight:600;height:46px"></div>
     ${catList.length ? `<div class="field"><label>Category</label>${chips(catList.map(c => [c.id, c.name]), st.category_id, "xc")}</div>` : ""}
     <div class="field"><label>${isCardPay ? "Paid from" : st.type === "income" ? "Into" : st.type === "saving" ? "From" : "Paid with"}</label>${chips(fromAcc.map(a => [a.id, a.name]), st.account_id, "xac")}</div>
+    ${st.type === "saving" && savingsAccounts().length ? `<div class="field"><label>Into</label>${chips(savingsAccounts().map(a => [a.id, a.name]), st.to_account_id, "xto")}</div>` : ""}
     ${isCardPay ? `<div class="field"><label>Card</label>${chips(S.accounts.filter(a => a.kind === "card").map(a => [a.id, a.name]), st.to_account_id, "xto")}</div>` : ""}
     ${st.type === "expense" || st.type === "income" ? `<div class="field"><label>${st.type === "income" ? "From" : "Where / who"}</label><input type="text" id="xp" value="${esc(st.payee || "")}" placeholder="${st.type === "income" ? "Salary" : "Kedai kopi"}"></div>` : ""}
     <div class="two"><div class="field"><label>Date</label><input type="date" id="xd" value="${st.date}"></div><div class="field"><label>Time</label><input type="time" id="xt" value="${(st.time || "").slice(0, 5)}"></div></div>
@@ -178,6 +187,7 @@ function txSheet(t, preset = {}, opts = {}) {
   const mount = sh => {
     sh.querySelectorAll("[data-ty]").forEach(b => b.onclick = () => { keep(); st.type = b.dataset.ty; if (st.type !== "expense" && st.type !== "income") st.category_id = null;
       else if (st.category_id && cat(st.category_id)?.kind !== st.type) st.category_id = null;
+      if (st.type === "saving") { if (["card", "savings"].includes(acc(st.account_id)?.kind)) st.account_id = S.accounts.find(a => a.kind === "bank")?.id; st.to_account_id = savingsAccounts()[0]?.id || null; }
       if (st.type === "card_payment") { if (acc(st.account_id)?.kind === "card") st.account_id = S.accounts.find(a => a.kind === "bank")?.id; st.to_account_id = st.to_account_id || S.accounts.find(a => a.kind === "card")?.id; }
       sh.innerHTML = '<div class="grab"></div>' + draw(); mount(sh); });
     sh.querySelectorAll("[data-xc]").forEach(b => b.onclick = () => { st.category_id = st.category_id === b.dataset.xc ? null : b.dataset.xc; sh.querySelectorAll("[data-xc]").forEach(x => x.classList.toggle("on", x.dataset.xc === st.category_id)); });
@@ -191,20 +201,21 @@ function txSheet(t, preset = {}, opts = {}) {
       if (!(amount > 0)) { $("#xerr").textContent = "Enter an amount."; return; }
       if (st.type === "card_payment" && !st.to_account_id) { $("#xerr").textContent = "Pick the card you paid."; return; }
       const o = { type: st.type, amount, date: st.date, time: st.time, category_id: st.category_id, account_id: st.account_id || null,
-        to_account_id: st.type === "card_payment" ? st.to_account_id : null, goal_id: st.type === "saving" ? (st.goal_id || null) : null, payee: (st.type === "expense" || st.type === "income") ? (st.payee || "").trim() || null : null, note: (st.note || "").trim() || null, needs_review: false };
+        to_account_id: st.type === "card_payment" || st.type === "saving" ? (st.to_account_id || null) : null, goal_id: st.type === "saving" ? (st.goal_id || null) : null, payee: (st.type === "expense" || st.type === "income") ? (st.payee || "").trim() || null : null, note: (st.note || "").trim() || null, needs_review: false };
       try {
         if (isNew) S.tx.unshift(await db.insert("myday_transactions", { ...o, source: "manual" }));
         else Object.assign(t, await db.update("myday_transactions", t.id, o));
         if (o.type === "expense" && o.payee && (o.category_id || o.account_id)) learn(o.payee, o.category_id, o.account_id);
         S.tx.sort((a, b) => b.date.localeCompare(a.date) || (b.time || "").localeCompare(a.time || ""));
         if (window.MD.refreshGoalTx && (o.goal_id || t.goal_id)) await window.MD.refreshGoalTx();
+        if (o.type === "saving" || t.type === "saving") await refreshSaving();
         if (o.goal_id) { const g = (S.goals || []).find(k => k.id === o.goal_id); if (g && window.MD.goalSaved(g) >= g.target && window.MD.goalSaved(g) - amount < g.target) { setTimeout(() => { window.ART.confetti(null, 30); toast(`You reached ${g.name}!`); }, 350); } }
         closeSheet(); render();
         if (opts.review) nextReview(); else if (!(o.goal_id)) toast(isNew ? "Saved" : "Changes saved");
       } catch (e) { fail(e); }
     };
     const del = $("#xdel"); if (del) del.onclick = async () => {
-      try { await db.remove("myday_transactions", t.id); S.tx = S.tx.filter(x => x.id !== t.id); if (t.goal_id && window.MD.refreshGoalTx) await window.MD.refreshGoalTx(); closeSheet(); render();
+      try { await db.remove("myday_transactions", t.id); S.tx = S.tx.filter(x => x.id !== t.id); if (t.goal_id && window.MD.refreshGoalTx) await window.MD.refreshGoalTx(); if (t.type === "saving") await refreshSaving(); closeSheet(); render();
         toast("Deleted", async () => { S.tx.unshift(await db.restore("myday_transactions", t.id)); S.tx.sort((a, b) => b.date.localeCompare(a.date)); render(); });
         if (opts.review) setTimeout(nextReview, 300); } catch (e) { fail(e); }
     };
@@ -222,6 +233,19 @@ function learn(payee, category_id, account_id) {
     .then(r => { S.rules = S.rules.filter(x => x.payee_key !== payee_key).concat(r); }).catch(() => {});
 }
 window.MD.txSheet = txSheet;
+
+function savAccSheet(a) {
+  const ins = (S.savingTx || []).filter(t => t.to_account_id === a.id).sort((x, y) => y.date.localeCompare(x.date)).slice(0, 8);
+  openSheet(`<div class="row" style="gap:12px">${window.ART.jar(52)}<div><h2 class="h2">${esc(a.name)}</h2><div class="small muted">${rm(savingsBalance(a))} saved</div></div></div>
+    <div class="field" style="margin-top:14px"><label>Balance before you started using My Day (RM)</label><input type="number" inputmode="decimal" id="sob" value="${Number(a.opening_balance || 0) || ""}" placeholder="0.00"></div>
+    <p class="tiny muted" style="margin:-4px 2px 10px">Everything you save into ${esc(a.name)} in the app is added on top of this.</p>
+    <button class="btn primary block" id="sobs">Save</button>
+    <button class="btn block" id="sadd" style="margin-top:8px">+ Save money into ${esc(a.name)}</button>
+    ${ins.length ? `<div class="lbl">Recent</div><div class="list">${ins.map(t => `<div class="item"><div class="grow small">${fmtShort(t.date)}</div><span class="small">${rm(t.amount)}</span></div>`).join("")}</div>` : ""}`, () => {
+    $("#sobs").onclick = async () => { try { Object.assign(a, await db.update("myday_accounts", a.id, { opening_balance: Number($("#sob").value) || 0 })); closeSheet(); render(); toast("Saved"); } catch (e) { fail(e); } };
+    $("#sadd").onclick = () => txSheet(null, { type: "saving", to_account_id: a.id });
+  });
+}
 
 /* ---------- bills ---------- */
 function billSheet(b) {

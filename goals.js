@@ -39,52 +39,100 @@ function viewGoals() {
   <div class="seg">${[["goals", "Savings"], ["wish", "Wishlist"], ["admin", "Life admin"]].map(([k, l]) => `<button data-gv="${k}" class="${S.goalsView === k ? "on" : ""}">${l}</button>`).join("")}</div>
   ${{ goals: viewSavings, wish: viewWish, admin: viewAdmin }[S.goalsView]()}`;
 }
+/* ---------- cute trackers ---------- */
+const TINT = { lavender: ["#C9CBF3", "#8E92E0"], sage: ["#C8DECF", "#7FA38A"], sun: ["#FBE7A6", "#E5B93A"], rose: ["#F6CFCF", "#E8A0A0"], navy: ["#B9BCE6", "#2B3060"] };
+const eyes = (x, y, mood = "happy") => `<circle cx="${x - 4}" cy="${y}" r="1.3" fill="#5A4A3A"/><circle cx="${x + 4}" cy="${y}" r="1.3" fill="#5A4A3A"/>`
+  + (mood === "happy" ? `<path d="M${x - 2.5} ${y + 3} q2.5 2.4 5 0" stroke="#5A4A3A" stroke-width="1.2" fill="none" stroke-linecap="round"/>` : mood === "worried" ? `<path d="M${x - 2.5} ${y + 4.5} q2.5 -2 5 0" stroke="#5A4A3A" stroke-width="1.2" fill="none" stroke-linecap="round"/>` : `<circle cx="${x}" cy="${y + 4}" r="1.6" fill="#5A4A3A"/>`)
+  + `<circle cx="${x - 7}" cy="${y + 3}" r="1.6" fill="#F4A7A7" opacity=".7"/><circle cx="${x + 7}" cy="${y + 3}" r="1.6" fill="#F4A7A7" opacity=".7"/>`;
+let uid = 0;
+// a jar that fills up with coins as you save
+function jarArt(pct, color = "lavender", w = 74) {
+  const id = "jc" + (++uid), [lite, deep] = TINT[color] || TINT.lavender;
+  const top = 64 - Math.max(0, Math.min(1, pct)) * 44;
+  return `<svg width="${w}" height="${w}" viewBox="0 0 64 70" aria-hidden="true">
+    <defs><clipPath id="${id}"><path d="M14 20 h36 q5 0 5 6 v32 q0 8 -8 8 h-30 q-8 0 -8 -8 v-32 q0 -6 5 -6z"/></clipPath></defs>
+    <rect x="18" y="10" width="28" height="8" rx="3" fill="${deep}"/>
+    <path d="M14 20 h36 q5 0 5 6 v32 q0 8 -8 8 h-30 q-8 0 -8 -8 v-32 q0 -6 5 -6z" fill="#FBF9F5" stroke="${lite}" stroke-width="2"/>
+    <g clip-path="url(#${id})"><g class="jarfill" style="transform:translateY(${top}px)">
+      <path class="a-wavex" d="M0 2 q8 -4 16 0 t16 0 t16 0 t16 0 t16 0 t16 0 V80 H0Z" fill="${lite}"/>
+      ${[[22, 12], [34, 16], [44, 10], [28, 24], [40, 26], [20, 32], [46, 34]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="4.2" fill="#F6D86B" stroke="#E5B93A" stroke-width="1"/>`).join("")}</g></g>
+    ${eyes(32, 40, pct >= 1 ? "happy" : "happy")}
+    ${pct >= 1 ? `<path class="a-twinkle" d="M54 8 l1.6 3.4 3.4 1.6 -3.4 1.6 -1.6 3.4 -1.6 -3.4 -3.4 -1.6 3.4 -1.6z" fill="#F6D86B"/>` : ""}</svg>`;
+}
+// a wrapped gift; opens when you've bought it
+function giftArt(color = "rose", open = false, w = 64) {
+  const [lite, deep] = TINT[color] || TINT.rose;
+  return `<svg width="${w}" height="${w}" viewBox="0 0 64 64" aria-hidden="true">
+    ${open ? `<path class="a-bob" d="M32 14 c-3 -5 -11 -3 -9 3 c1 4 9 8 9 8 s8 -4 9 -8 c2 -6 -6 -8 -9 -3z" fill="#E8A0A0"/>` : ""}
+    <rect x="12" y="30" width="40" height="28" rx="5" fill="${lite}"/><rect x="29" y="30" width="6" height="28" fill="${deep}"/>
+    <g style="transform:${open ? "translate(10px,-10px) rotate(18deg)" : "none"};transform-origin:52px 26px;transition:transform .5s"><rect x="9" y="21" width="46" height="11" rx="4" fill="${lite}" stroke="${deep}" stroke-width="1.4"/><rect x="29" y="21" width="6" height="11" fill="${deep}"/>
+    ${open ? "" : `<path d="M32 21 c-6 -10 -16 -6 -11 0z M32 21 c6 -10 16 -6 11 0z" fill="${deep}"/>`}</g>
+    ${eyes(22, 44, "happy").replace(/cx="(\d+)"/g, (m, v) => `cx="${v}"`)}</svg>`;
+}
+// a tear-off calendar page with a face that worries as the date gets close
+function calArt(ds, tone, w = 60) {
+  const d = parse(ds), [band, mood] = tone === "late" ? ["#E8A0A0", "oh"] : tone === "soon" ? ["#F6D86B", "worried"] : tone === "done" ? ["#7FA38A", "happy"] : ["#C9CBF3", "happy"];
+  return `<svg width="${w}" height="${w}" viewBox="0 0 64 64" aria-hidden="true" class="${tone === "late" ? "a-shake" : ""}">
+    <rect x="8" y="10" width="48" height="48" rx="9" fill="#FFFFFF" stroke="#ECE8F2" stroke-width="1.5"/>
+    <path d="M8 19 a9 9 0 0 1 9 -9 h30 a9 9 0 0 1 9 9 v5 h-48z" fill="${band}"/>
+    <rect x="20" y="5" width="4" height="10" rx="2" fill="#6E7196"/><rect x="40" y="5" width="4" height="10" rx="2" fill="#6E7196"/>
+    <text x="32" y="21.5" text-anchor="middle" font-size="7.5" font-weight="700" fill="#2B3060" font-family="Nunito,Inter,sans-serif">${MON[d.getMonth()].toUpperCase()}</text>
+    <text x="32" y="42" text-anchor="middle" font-size="17" font-weight="800" fill="#2B3060" font-family="Nunito,Inter,sans-serif">${d.getDate()}</text>
+    <g transform="translate(0,7)">${eyes(32, 42, mood).replace(/r="1.3"/g, 'r="1.1"')}</g>
+    ${tone === "done" ? `<circle cx="50" cy="50" r="9" fill="#7FA38A"/><path d="M45.5 50 l3 3 l6 -6" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` : ""}</svg>`;
+}
+
 function goalCard(g) {
-  const saved = savedFor(g), pct = Math.min(100, saved / g.target * 100), left = Math.max(0, g.target - saved);
+  const saved = savedFor(g), pct = saved / g.target, left = Math.max(0, g.target - saved), done = saved >= g.target;
   let pace = "";
   if (g.target_date && left > 0) {
     const months = Math.max(1, (parse(g.target_date).getFullYear() - new Date().getFullYear()) * 12 + parse(g.target_date).getMonth() - new Date().getMonth());
-    pace = ` · about ${rm0(left / months)} a month to reach it by ${fmtDate(g.target_date)}`;
-  } else if (g.target_date) pace = ` · by ${fmtDate(g.target_date)}`;
-  const done = saved >= g.target;
-  return `<div class="card" style="${done ? "background:var(--sagebg);border:none" : ""}">
-    <button data-goal="${g.id}" style="width:100%;text-align:left">
-      <div class="between"><span class="h2" style="font-size:15px">${done ? window.ART.star(18).replace("<svg", '<svg style="vertical-align:-3px;margin-right:4px"') : ""}${esc(g.name)}</span><span class="h2" style="font-size:15px">${Math.floor(pct)}%</span></div>
-      <div class="bar"><i style="width:${pct}%;background:${CCOL[g.color] || "var(--peri)"}"></i></div>
-      <div class="tiny muted" style="margin-top:6px">${rm(saved)} of ${rm0(g.target)}${done ? " · reached" : pace}</div></button>
-    ${done ? "" : `<button class="btn" data-addsave="${g.id}" style="margin-top:10px;height:34px;font-size:13px">+ Add savings</button>`}</div>`;
+    pace = `about ${rm0(left / months)} a month to reach it by ${fmtDate(g.target_date)}`;
+  } else if (g.target_date) pace = `by ${fmtDate(g.target_date)}`;
+  return `<div class="card jarcard" id="gc-${g.id}" style="${done ? "background:var(--sagebg);border:none" : ""}">
+    <button class="jarmain" data-goal="${g.id}"><div class="jarbox">${jarArt(pct, g.color)}</div>
+      <div style="flex:1;min-width:0"><div class="between"><span class="h2" style="font-size:15px">${done ? window.ART.star(17).replace("<svg", '<svg style="vertical-align:-3px;margin-right:4px"') : ""}${esc(g.name)}</span><span class="pctbadge">${Math.floor(Math.min(1, pct) * 100)}%</span></div>
+      <div style="font-size:18px;font-weight:700;font-family:Nunito,Inter,sans-serif;margin-top:2px">${rm0(saved)} <span class="small muted" style="font-weight:400">of ${rm0(g.target)}</span></div>
+      <div class="tiny muted">${done ? "Jar full. You did it!" : left ? `${rm0(left)} to go${pace ? " · " + pace : ""}` : ""}</div></div></button>
+    ${done ? "" : `<button class="btn sun block" data-addsave="${g.id}" style="margin-top:10px;height:36px;font-size:13px">+ Drop savings in the jar</button>`}</div>`;
 }
 function viewSavings() {
   const active = S.goals.filter(g => !g.done_at), done = S.goals.filter(g => g.done_at);
   const total = active.reduce((s, g) => s + savedFor(g), 0);
-  return `${active.length ? `<div class="card leave between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">SAVED TOWARDS GOALS</div><div style="font-size:24px;font-weight:500">${rm(total)}</div></div>
-      <div class="small muted">${active.length} goal${active.length > 1 ? "s" : ""}</div></div><div style="height:10px"></div>` : ""}
-    ${active.map(goalCard).join("") || '<div class="empty">Start a savings goal, like a trip or an emergency fund.</div>'}
-    <button class="addline" id="addgoal">+ New goal</button>
-    ${done.length ? `<div class="lbl">Finished</div>${done.map(goalCard).join("")}` : ""}
-    <p class="tiny faint" style="text-align:center;margin-top:10px">Savings you add here also show as "Saved" in Money.</p>`;
+  return `${active.length ? `<div class="card leave between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">SAVED TOWARDS GOALS</div><div style="font-size:24px;font-weight:700;font-family:Nunito,Inter,sans-serif">${rm(total)}</div><div class="small muted">${active.length} jar${active.length > 1 ? "s" : ""} filling up${(window.MD.savingsAccounts ? window.MD.savingsAccounts() : []).length ? " · kept in " + window.MD.savingsAccounts().map(x => x.a.name).join(", ") : ""}</div></div>${window.ART.jar(58)}</div><div style="height:10px"></div>` : ""}
+    ${active.map(goalCard).join("") || '<div class="empty">Start a savings jar, like a trip or an emergency fund.</div>'}
+    <button class="addline" id="addgoal">+ New savings jar</button>
+    ${done.length ? `<div class="lbl">Full jars</div>${done.map(goalCard).join("")}` : ""}
+    <p class="tiny faint" style="text-align:center;margin-top:10px">Savings you drop in here also show as "Saved" in Money.</p>`;
 }
 function viewWish() {
   const open = S.wish.filter(w => !w.bought_at), bought = S.wish.filter(w => w.bought_at);
-  const row = w => { const g = w.goal_id && S.goals.find(x => x.id === w.goal_id);
-    return `<div class="item ${w.bought_at ? "done" : ""}"><button class="grow" style="text-align:left" data-wish="${w.id}"><div class="title">${esc(w.name)}</div>
-      <div class="tiny muted">${w.price ? rm(w.price) : "No price yet"}${g ? ` · saving ${Math.floor(Math.min(100, savedFor(g) / g.target * 100))}%` : ""}${w.bought_at ? " · bought" : ""}</div></button>
-      ${!w.bought_at && !g && w.price ? `<button class="small" style="color:var(--peri);white-space:nowrap" data-saveforit="${w.id}">Save for it</button>` : ""}</div>`; };
+  const cols = ["rose", "lavender", "sun", "sage"];
+  const tile = (w, i) => { const g = w.goal_id && S.goals.find(x => x.id === w.goal_id), p = g ? Math.min(1, savedFor(g) / g.target) : 0;
+    return `<div class="gift ${w.bought_at ? "got" : ""}" id="wc-${w.id}"><button data-wish="${w.id}" class="giftmain">${giftArt(cols[i % cols.length], !!w.bought_at, 64)}
+      <div class="title">${esc(w.name)}</div><div class="tiny muted">${w.bought_at ? "Got it!" : w.price ? rm0(w.price) : "Add a price"}</div>
+      ${g && !w.bought_at ? `<div class="bar" style="margin-top:6px"><i style="width:${p * 100}%;background:var(--rose)"></i></div><div class="tiny muted" style="margin-top:3px">${Math.floor(p * 100)}% saved</div>` : ""}</button>
+      ${!w.bought_at && !g && w.price ? `<button class="small giftbtn" data-saveforit="${w.id}">Save for it</button>` : ""}</div>`; };
   return `<form class="addbar" id="wadd"><input type="text" id="win" placeholder="Something you'd like" autocomplete="off"><button class="btn sun" type="submit">Add</button></form>
-    ${open.length ? `<div class="list">${open.map(row).join("")}</div>` : '<div class="empty">Your wishlist is empty.</div>'}
-    ${bought.length ? `<div class="lbl">Got it</div><div class="list">${bought.map(row).join("")}</div>` : ""}
-    <p class="tiny faint" style="text-align:center;margin-top:14px">Tap an item to add a price or link. "Save for it" turns it into a savings goal.</p>`;
+    ${open.length ? `<div class="gifts">${open.map(tile).join("")}</div>` : '<div class="empty">Your wishlist is empty.</div>'}
+    ${bought.length ? `<div class="lbl">Unwrapped</div><div class="gifts">${bought.map(tile).join("")}</div>` : ""}
+    <p class="tiny faint" style="text-align:center;margin-top:14px">Tap a gift to add a price or link. "Save for it" gives it its own savings jar.</p>`;
 }
 function viewAdmin() {
   const open = S.reminders.filter(r => !r.done_at), done = S.reminders.filter(r => r.done_at).slice(-5);
-  const row = r => { const st = remStatus(r);
-    return `<div class="item"><button class="grow" style="text-align:left" data-rem="${r.id}"><div class="title">${esc(r.name)}</div>
-      <div class="tiny muted">${fmtDate(r.due_date)}${r.repeat !== "none" ? ` · every ${r.repeat === "yearly" ? "year" : "month"}` : ""}${r.note ? " · " + esc(r.note) : ""}</div></button>
-      ${r.done_at ? '<span class="pill sage">Done</span>' : `<span class="pill ${st.cls}">${st.txt}</span><button class="chk" data-remdone="${r.id}" aria-label="Done" style="margin-left:6px"></button>`}</div>`; };
+  const card = r => { const d = daysTo(r.due_date), st = remStatus(r), tone = r.done_at ? "done" : d < 0 ? "late" : st.soon ? "soon" : "later";
+    const win = Math.max(r.notify_days, 1), fill = r.done_at ? 1 : d < 0 ? 1 : Math.max(0, Math.min(1, 1 - d / Math.max(win * 2, 30)));
+    const big = r.done_at ? "Done" : d < 0 ? `${-d} day${d === -1 ? "" : "s"} late` : d === 0 ? "Due today" : d === 1 ? "Tomorrow" : `${d} days`;
+    return `<div class="card admincard tone-${tone}" id="rc-${r.id}"><button class="adminmain" data-rem="${r.id}">${calArt(r.due_date, tone)}
+      <div style="flex:1;min-width:0"><div class="h2" style="font-size:15px">${esc(r.name)}</div>
+      <div class="bigdays">${big}</div>
+      <div class="tiny muted">${fmtDate(r.due_date)}${r.repeat !== "none" ? ` · every ${r.repeat === "yearly" ? "year" : "month"}` : ""}${r.note ? " · " + esc(r.note) : ""}</div>
+      ${r.done_at ? "" : `<div class="bar" style="margin-top:6px"><i style="width:${fill * 100}%;background:${tone === "late" ? "#D86A6A" : tone === "soon" ? "#E5B93A" : "var(--peri)"}"></i></div>`}</div></button>
+      ${r.done_at ? "" : `<button class="donebtn" data-remdone="${r.id}" aria-label="Mark done">${I.check}</button>`}</div>`; };
   return `<button class="btn block" id="addrem" style="margin-bottom:12px">+ Add reminder</button>
-    ${open.length ? `<div class="list">${open.map(row).join("")}</div>` : '<div class="empty">Add renewals and due dates, like road tax, car insurance, or your APC.</div>'}
-    ${done.length ? `<div class="lbl">Done</div><div class="list">${done.map(row).join("")}</div>` : ""}
-    <p class="tiny faint" style="text-align:center;margin-top:14px">Reminders show on Today when they're close. Ticking a yearly one moves it to next year. Monthly bills live in Money → Bills.</p>`;
+    ${open.map(card).join("") || '<div class="empty">Add renewals and due dates, like road tax, car insurance, or your APC.</div>'}
+    ${done.length ? `<div class="lbl">Done</div>${done.map(card).join("")}` : ""}
+    <p class="tiny faint" style="text-align:center;margin-top:14px">The little calendar gets worried as the date gets close. Ticking a yearly one moves it to next year.</p>`;
 }
 function bindGoals() {
   document.querySelectorAll("[data-gv]").forEach(b => b.onclick = () => { S.goalsView = b.dataset.gv; render(); });
@@ -143,7 +191,7 @@ function wishSheet(w) {
     $("#wsave").onclick = async () => { const o = { name: $("#wn").value.trim() || w.name, price: $("#wp").value === "" ? null : Number($("#wp").value), link: $("#wl").value.trim() || null, note: $("#wno").value.trim() || null };
       try { Object.assign(w, await db.update("myday_wishlist", w.id, o)); closeSheet(); render(); toast("Saved"); } catch (e) { fail(e); } };
     $("#wbought").onclick = async () => {
-      try { Object.assign(w, await db.update("myday_wishlist", w.id, { bought_at: w.bought_at ? null : nowIso() })); closeSheet(); render();
+      try { Object.assign(w, await db.update("myday_wishlist", w.id, { bought_at: w.bought_at ? null : nowIso() })); closeSheet(); if (w.bought_at) window.ART.celebrate(`#wc-${w.id} svg`, true); render();
         if (w.bought_at && w.price) window.MD.txSheet(null, { type: "expense", amount: w.price, payee: w.name, category_id: (S.categories || []).find(c => c.name === "Shopping")?.id || null }); } catch (e) { fail(e); }
     };
     $("#wdel").onclick = async () => { try { await db.remove("myday_wishlist", w.id); S.wish = S.wish.filter(x => x.id !== w.id); closeSheet(); render();
@@ -178,6 +226,7 @@ function remSheet(r) {
 async function remDone(r) {
   try {
     if (r.repeat === "none") { Object.assign(r, await db.update("myday_reminders", r.id, { done_at: nowIso() })); render(); toast("Done", async () => { Object.assign(r, await db.update("myday_reminders", r.id, { done_at: null })); render(); }); return; }
+    window.ART.confetti(document.querySelector(`#rc-${r.id} .donebtn`), 14);
     const old = r.due_date, d = parse(old);
     if (r.repeat === "yearly") d.setFullYear(d.getFullYear() + 1); else d.setMonth(d.getMonth() + 1);
     Object.assign(r, await db.update("myday_reminders", r.id, { due_date: ymd(d) }));
