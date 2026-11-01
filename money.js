@@ -82,7 +82,7 @@ function accBalance(a) {
   return b;
 }
 function cardOwed() {
-  return S.accounts.filter(a => a.kind === "card").map(a => ({ a, owed: sum(S.tx.filter(t => t.type === "expense" && t.account_id === a.id)) - sum(S.tx.filter(t => t.type === "card_payment" && t.to_account_id === a.id)) }));
+  return S.accounts.filter(a => a.kind === "card").map(a => ({ a, owed: Number(a.opening_balance || 0) + sum(S.tx.filter(t => t.type === "expense" && t.account_id === a.id)) - sum(S.tx.filter(t => t.type === "card_payment" && t.to_account_id === a.id)) }));
 }
 // installments: which number this month is (e.g. 6 of 36), or null when outside the plan
 function instNo(b, m) {
