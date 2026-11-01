@@ -24,7 +24,7 @@ function stats(m) {
     top, bills: exp.filter(t => t.bill_id).length, billsAmt: sum(exp.filter(t => t.bill_id)), kinds,
     plans: (S.plans || []).filter(p => p.date.startsWith(m)).length,
     todos: (S.todos || []).filter(t => t.done_at && ymd(new Date(t.done_at)).startsWith(m)).length,
-    topics, minutes: (S.topics || []).filter(t => t.week_start.startsWith(m)).reduce((s, t) => s + (t.minutes || 0), 0)
+    topics, minutes: window.MD.studyMinutesIn ? window.MD.studyMinutesIn(m) : 0
   };
 }
 function recapSheet(m = lastMonth()) {
@@ -42,8 +42,8 @@ function recapSheet(m = lastMonth()) {
     ${s.bills ? `<p class="small muted" style="margin:8px 2px">${s.bills} bill${s.bills > 1 ? "s" : ""} paid, ${rm(s.billsAmt)} in total.</p>` : ""}
     <div class="lbl">Your month</div>
     <div class="stats" style="margin-top:0">${tile(s.kinds.work, "work days")}${tile(s.kinds.oncall, "on-calls")}${tile(s.kinds.leave, "leave days")}</div>
-    <div class="stats" style="margin-top:0">${tile(s.plans, "plans")}${tile(s.todos, "to-dos done")}${tile(s.topics.length, "topics learned")}</div>
-    ${s.topics.length ? `<div class="lbl">What you learned</div><div class="list">${s.topics.map(t => `<div class="item"><div class="grow">${esc(t.title)}</div>${t.minutes ? `<span class="tiny muted">${t.minutes}m</span>` : ""}</div>`).join("")}</div>` : ""}
+    <div class="stats" style="margin-top:0">${tile(s.plans, "plans")}${tile(s.todos, "to-dos done")}${tile(s.topics.length, "topics bloomed")}</div>
+    ${s.topics.length ? `<div class="lbl">What you learned</div><div class="list">${s.topics.map(t => `<div class="item"><div class="grow">${esc(t.title)}</div></div>`).join("")}</div>` : ""}
     ${(S.goals || []).filter(g => !g.done_at).length ? `<div class="lbl">Goals</div><div class="list">${S.goals.filter(g => !g.done_at).map(g => { const sv = window.MD.goalSaved(g); return `<div class="item"><div class="grow">${esc(g.name)}</div><span class="small">${Math.floor(Math.min(100, sv / g.target * 100))}%</span></div>`; }).join("")}</div>` : ""}
     <p class="serif muted" style="text-align:center;margin:18px 0 4px">little by little, it adds up</p>`, sh => {
     sh.querySelectorAll("[data-rm]").forEach(b => b.onclick = async () => { const nm = b.dataset.rm; if (window.MD.ensureMonth) await window.MD.ensureMonth(nm).catch(() => {}); recapSheet(nm); });

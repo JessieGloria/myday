@@ -35,7 +35,7 @@ window.MD.refreshGoalTx = async () => { S.goalTx = await db.list("myday_transact
 
 /* ---------- views ---------- */
 function viewGoals() {
-  return `<div class="top"><div><h1 class="h1">Goals</h1><div class="small muted serif" style="font-size:14px">little by little, it adds up</div></div><div class="row">${window.ART.flag(62)}<button class="iconbtn" id="gear" aria-label="Settings">${I.gear}</button></div></div>
+  return `<div class="top"><div><h1 class="h1">Goals</h1><div class="small muted serif" style="font-size:14px">little by little, it adds up</div></div><div class="row">${window.ART.flag(62)}</div></div>
   <div class="seg">${[["goals", "Savings"], ["wish", "Wishlist"], ["admin", "Life admin"]].map(([k, l]) => `<button data-gv="${k}" class="${S.goalsView === k ? "on" : ""}">${l}</button>`).join("")}</div>
   ${{ goals: viewSavings, wish: viewWish, admin: viewAdmin }[S.goalsView]()}`;
 }

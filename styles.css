@@ -228,3 +228,29 @@ button:active{transform:scale(.96)}
 .stat .si svg{width:15px;height:15px}
 .done .title{transition:color .3s}
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* ===== study garden ===== */
+.weekdrops{display:flex;justify-content:space-between;margin-top:14px}
+.weekdrops div{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;color:var(--navytext);width:34px;padding:4px 0;border-radius:12px}
+.weekdrops div.today{background:#3A3F7A}
+.weekdrops div.on svg{animation:pop .5s cubic-bezier(.3,1.7,.5,1) both}
+.topic{padding:12px 14px}
+.topic+.topic{margin-top:10px}
+.topic-main{display:flex;gap:12px;align-items:center;width:100%;text-align:left}
+.topic-main .pot{flex:none;width:62px;height:62px;border-radius:18px;background:var(--lav);display:flex;align-items:flex-end;justify-content:center;overflow:hidden}
+.topic-acts{display:flex;gap:6px;margin-top:10px}
+.topic-acts .btn{flex:1;height:34px;font-size:12.5px;padding:0 8px;display:flex;align-items:center;justify-content:center;gap:5px}
+.leaves{display:flex;gap:4px;margin-top:6px}
+.leaves i{width:16px;height:9px;border-radius:9px 1px 9px 1px;background:var(--line);display:block;transition:background .4s}
+.leaves i.on{background:var(--sage)}
+.garden{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.garden button{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:10px 6px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;box-shadow:0 2px 12px rgba(43,48,96,.05)}
+.garden span{font-size:11.5px;text-align:center;line-height:1.25;overflow-wrap:anywhere;color:var(--ink)}
+.stagepick{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.stagepick button{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 0 5px;display:flex;flex-direction:column;align-items:center;font-size:10.5px;color:var(--ink2)}
+.stagepick button.on{border-color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy);color:var(--ink);font-weight:600}
+.a-bloom{animation:bloom 4s ease-in-out infinite}
+@keyframes bloom{0%,100%{transform:rotate(0) scale(1)}50%{transform:rotate(12deg) scale(1.06)}}
+.raindrop{position:fixed;width:5px;height:9px;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;background:#9DC4F0;z-index:80;pointer-events:none;animation:rain .7s ease-in forwards}
+@keyframes rain{from{transform:translateY(-18px);opacity:0}30%{opacity:1}to{transform:translateY(34px);opacity:0}}
+.pot.pop svg{animation:pop .5s cubic-bezier(.3,1.7,.5,1)}

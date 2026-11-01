@@ -187,7 +187,7 @@ function nav() {
 function bindCommon() {
   document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.paint = null; render(); window.scrollTo(0, 0); });
   $("#fab").onclick = quickAdd;
-  const g = $("#gear"); if (g) g.onclick = settingsSheet;
+  const g = $("#gear"); if (g) g.onclick = () => ({ calendar: settingsSheet }[S.tab] || todaySettings)();
 }
 
 /* ---------- login ---------- */
@@ -219,10 +219,9 @@ function viewToday() {
     <div class="row">${window.ART.sunPlant(70)}
     <button class="iconbtn" id="gear" aria-label="Settings">${I.gear}</button></div></div>
   <div class="card status st-${lab.cls}"><div class="ic">${lab.icon}</div><div><div class="h2">${esc(lab.title)}</div><div class="small muted">${esc(lab.sub)}</div></div></div>${post}
-  <div class="stats">
+  <div class="stats" style="grid-template-columns:1fr 1fr">
     <button class="stat" data-go="todo"><span class="si" style="background:var(--lav);color:var(--peri)">${I.todo}</span><b>${todoLeft}</b><span class="tiny muted">to do today</span></button>
     <button class="stat" data-go="money"><span class="si" style="background:var(--sunbg);color:#C99A1E">${I.coin}</span><b>RM${Math.round(window.MD.moneyToday ? window.MD.moneyToday() : 0)}</b><span class="tiny muted">spent today</span></button>
-    <button class="stat" data-go="cal"><span class="si" style="background:var(--sagebg);color:var(--sage)">${I.leaf.replace(' width="20" height="20"', "")}</span><b>${lv.left}</b><span class="tiny muted">leave days left</span></button>
   </div>
   ${dueSoon()}
   <div class="seg">${[["plan", "Plan"], ["todo", "To do"], ["buy", "To buy"]].map(([k, l]) => `<button data-tv="${k}" class="${S.todayView === k ? "on" : ""}">${l}</button>`).join("")}</div>
@@ -445,20 +444,21 @@ function viewCalendar() {
     S.plans.filter(p => p.date === ds).forEach(p => up.push([ds, p.title, "rose", p.start_time ? t12(hhmm(p.start_time)) : "Plan"]));
   }
   return `<div class="top"><div><h1 class="h1">${MONL[m - 1]} <span class="muted" style="font-weight:300">${y}</span></h1><div class="small muted">Your shifts and plans</div></div>
-    <div class="row"><button class="iconbtn" id="cprev" aria-label="Previous month">${I.left}</button><button class="iconbtn" id="cnext" aria-label="Next month">${I.right}</button></div></div>
+    <div class="row"><button class="iconbtn" id="cprev" aria-label="Previous month">${I.left}</button><button class="iconbtn" id="cnext" aria-label="Next month">${I.right}</button><button class="iconbtn" id="gear" aria-label="Annual leave settings">${I.gear}</button></div></div>
     ${S.paint ? paint : `<button class="btn block" id="proster" style="margin-bottom:10px;height:auto;padding:6px 14px;display:flex;align-items:center;gap:8px;justify-content:center">${window.ART.moon(34)}<span>Edit roster: on-call, leave, off days</span></button>`}
     <div class="cal" style="margin-top:10px"><div class="wd">${["M", "T", "W", "T", "F", "S", "S"].map(x => `<div>${x}</div>`).join("")}</div><div class="grid">${cells}</div>
     <div class="legend"><span><i style="background:var(--peri)"></i>Work</span><span><i style="background:var(--navy)"></i>On-call</span><span><i style="background:var(--sun)"></i>Off / holiday</span><span><i style="background:var(--sage)"></i>Leave</span><span><i style="background:var(--rose)"></i>Plan</span></div></div>
-    <div class="card leave between" style="margin-top:12px"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">ANNUAL LEAVE ${lv.cy}</div>
+    <button class="card leave between" id="leavecard" style="margin-top:12px;width:100%;text-align:left"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">ANNUAL LEAVE ${lv.cy}</div>
       <div style="font-size:26px;font-weight:500">${lv.left} <span style="font-size:14px;font-weight:400">days left</span></div>
       <div class="small muted">${lv.taken} taken${lv.booked ? ` · ${lv.booked} booked ahead` : ""} · ${lv.next} available in ${lv.cy + 1}</div></div>
-      <svg class="ring" width="58" height="58" aria-hidden="true"><circle cx="29" cy="29" r="23" fill="none" stroke="#3E4480" stroke-width="7"/><circle class="ringfill" cx="29" cy="29" r="23" fill="none" stroke="#F6D86B" stroke-width="7" stroke-linecap="round" stroke-dasharray="${Math.max(0, Math.min(1, lv.left / Math.max(1, Number(S.settings.leave_entitlement)))) * 144.5} 145" transform="rotate(-90 29 29)"/></svg></div>
+      <svg class="ring" width="58" height="58" aria-hidden="true"><circle cx="29" cy="29" r="23" fill="none" stroke="#3E4480" stroke-width="7"/><circle class="ringfill" cx="29" cy="29" r="23" fill="none" stroke="#F6D86B" stroke-width="7" stroke-linecap="round" stroke-dasharray="${Math.max(0, Math.min(1, lv.left / Math.max(1, Number(S.settings.leave_entitlement)))) * 144.5} 145" transform="rotate(-90 29 29)"/></svg></button>
     <div class="lbl">Coming up</div>
     ${up.length ? `<div class="list">${up.map(([ds, title, cls, sub]) => `<button class="item" style="width:100%;text-align:left" data-day="${ds}"><div class="grow"><b style="font-weight:600">${esc(relDay(ds))}</b> · ${esc(title)}</div><span class="pill ${cls}">${esc(sub || "")}</span></button>`).join("")}</div>` : '<div class="empty">Nothing special in the next 30 days.</div>'}`;
 }
 function bindCalendar() {
   const mv = n => { const [y, m] = S.calMonth.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); S.calMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; render(); };
   $("#cprev").onclick = () => mv(-1); $("#cnext").onclick = () => mv(1);
+  const lc = $("#leavecard"); if (lc) lc.onclick = settingsSheet;
   const pr = $("#proster"); if (pr) pr.onclick = () => { S.paint = "oncall"; render(); };
   const pd = $("#pdone"); if (pd) pd.onclick = () => { S.paint = null; render(); toast("Roster saved"); };
   document.querySelectorAll("[data-pm]").forEach(b => b.onclick = () => { S.paint = b.dataset.pm; render(); });
@@ -525,6 +525,27 @@ function quickAdd() {
 }
 
 /* ---------- settings ---------- */
+function todaySettings() {
+  const doneTodos = S.todos.filter(x => x.done_at), bought = S.shopping.filter(x => x.done_at);
+  openSheet(`<h2 class="h2" style="margin-bottom:6px">Today</h2>
+    <div class="lbl">Tidy up</div>
+    <button class="btn block" id="ctodo" style="margin-bottom:8px">Clear finished to-dos${doneTodos.length ? ` (${doneTodos.length})` : ""}</button>
+    <button class="btn block" id="cbuy">Clear bought items${bought.length ? ` (${bought.length})` : ""}</button>
+    <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
+    <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
+    <button class="btn block danger" id="sout">Sign out</button>
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 6 (study garden)</p>`, () => {
+    const clear = async (table, list, key, msg) => {
+      if (!list.length) { toast("Nothing to clear"); return; }
+      const ids = list.map(x => x.id);
+      try { await rest("PATCH", `${table}?id=in.(${ids.join(",")})`, { deleted_at: nowIso() }); S[key] = S[key].filter(x => !ids.includes(x.id)); closeSheet(); render();
+        toast(msg, async () => { const r = await rest("PATCH", `${table}?id=in.(${ids.join(",")})`, { deleted_at: null }); S[key].push(...r); render(); }); } catch (e) { fail(e); }
+    };
+    $("#ctodo").onclick = () => clear("myday_todos", doneTodos, "todos", "Finished to-dos cleared");
+    $("#cbuy").onclick = () => clear("myday_shopping", bought, "shopping", "Bought items cleared");
+    $("#sout").onclick = () => { closeSheet(); signOut(); };
+  });
+}
 function settingsSheet() {
   const st = S.settings, lv = leaveSummary();
   openSheet(`<h2 class="h2" style="margin-bottom:6px">Annual leave</h2>
@@ -539,9 +560,7 @@ function settingsSheet() {
     <div class="field"><label>Days left on start date</label><input type="number" id="slb" value="${st.leave_opening_balance}"></div>
     <div class="field"><label>Start date for counting</label><input type="date" id="sld" value="${st.leave_opening_date}"></div>
     <p class="tiny muted" style="margin:-4px 2px 10px">Unused leave carries over with no limit. Only work days count as leave.</p>
-    <button class="btn block" id="ssave">Save allowance</button>
-    <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
-    <button class="btn block danger" id="sout">Sign out</button>`, sh => {
+    <button class="btn block" id="ssave">Save allowance</button>`, sh => {
     const workDays = () => { const f = $("#lf").value, t = $("#lt").value, out = []; if (!f || !t || t < f) return out;
       for (let d = f; d <= t; d = addDays(d, 1)) { if (baseKind(d) === "work") out.push(d); if (out.length > 60) break; } return out; };
     const upd = () => { const n = workDays().length; $("#lcount").textContent = n ? `${n} work day${n > 1 ? "s" : ""} will be marked as leave. Weekends and public holidays don't count.` : "No work days in these dates."; };
@@ -554,7 +573,6 @@ function settingsSheet() {
       try { S.settings = (await rest("PATCH", `myday_settings?user_id=eq.${st.user_id}`, { leave_entitlement: Number($("#sle").value), leave_opening_balance: Number($("#slb").value), leave_opening_date: $("#sld").value, leave_opening_year: Number($("#sld").value.slice(0, 4)), updated_at: nowIso() }))[0];
         closeSheet(); render(); toast("Allowance saved"); } catch (e) { fail(e); }
     };
-    $("#sout").onclick = () => { closeSheet(); signOut(); };
   });
 }
 

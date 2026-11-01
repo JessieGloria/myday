@@ -3,7 +3,7 @@
 Your personal planner: Today (plan, to do, to buy), Calendar (roster, leave, Sabah holidays).
 Money (step 2): income, spending, savings, budgets, bills, card owed, screenshot to expense.
 Goals (step 3): savings goals, wishlist, life admin reminders.
-Learn (step 3): weekly topics, notes, study timer, streak. Plus monthly recap and data backup in Settings.
+Learn: study garden (topics grow from seed to bloom), study log, timer, streak. Plus monthly recap.
 
 ## Put it online (same as Apolaki)
 
