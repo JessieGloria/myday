@@ -58,7 +58,8 @@ function accBalance(a) {
   let b = Number(a.opening_balance || 0);
   since.forEach(t => {
     const amt = Number(t.amount);
-    if (t.type === "income" && t.account_id === a.id) b += amt;
+    if ((t.type === "income" || t.type === "collect") && t.account_id === a.id) b += amt;
+    if (t.type === "passthrough" && t.account_id === a.id) b -= amt;
     if ((t.type === "expense" || t.type === "saving" || t.type === "card_payment") && t.account_id === a.id) b -= amt;
   });
   return b;
@@ -70,10 +71,12 @@ function billsFor(m) {
   const [y, mo] = m.split("-").map(Number), dim = new Date(y, mo, 0).getDate(), t = today();
   return S.bills.filter(b => b.frequency === "monthly" || b.due_month === mo).map(b => {
     const due = `${m}-${pad(Math.min(b.due_day, dim))}`;
-    const paid = S.tx.find(x => x.bill_id === b.id && x.bill_period === m);
+    const paid = S.tx.find(x => x.bill_id === b.id && x.bill_period === m && x.type === "expense");
+    const pass = S.tx.find(x => x.bill_id === b.id && x.bill_period === m && x.type === "passthrough");
+    const coll = (b.people || []).map(name => ({ name, tx: S.tx.find(x => x.bill_id === b.id && x.bill_period === m && x.type === "collect" && x.payee === name) }));
     const days = Math.round((parse(due) - parse(t)) / 864e5);
     const status = paid ? "paid" : days < 0 ? "late" : days <= 7 ? "soon" : "later";
-    return { b, due, paid, days, status };
+    return { b, due, paid, pass, coll, days, status };
   }).sort((a, b) => a.due.localeCompare(b.due));
 }
 const billPill = x => x.status === "paid" ? `<span class="pill sage">Paid</span>` : x.status === "late" ? `<span class="pill rose">${-x.days} day${x.days === -1 ? "" : "s"} late</span>` : x.status === "soon" ? `<span class="pill warn">${x.days === 0 ? "Today" : x.days === 1 ? "Tomorrow" : `in ${x.days} days`}</span>` : `<span class="pill">${fmtShort(x.due)}</span>`;
@@ -83,6 +86,12 @@ window.MD.billsDueSoon = () => billsFor(curMonth()).filter(x => x.status === "la
 /* ---------- views ---------- */
 function txRow(t) {
   const c = cat(t.category_id), a = acc(t.account_id);
+  if (t.type === "collect" || t.type === "passthrough") {
+    const bl = S.bills.find(x => x.id === t.bill_id);
+    return `<button class="item" style="width:100%;text-align:left" data-tx="${t.id}"><span style="width:10px;height:10px;border-radius:50%;flex:none;background:var(--lav2)"></span>
+      <div class="grow"><div class="title">${t.type === "collect" ? `${esc(t.payee || "")} paid you` : `${esc(bl?.name || "Bill")}: others' shares`}</div><div class="tiny muted">${esc(bl?.name || "")} · ${esc(a?.name || "")} · not counted as income or spending</div></div>
+      <span style="font-weight:600;color:var(--ink2)">${t.type === "collect" ? "+" : "−"} ${rm(t.amount)}</span></button>`;
+  }
   const sign = t.type === "income" ? "+" : t.type === "expense" ? "−" : "→";
   const col = t.type === "income" ? "color:var(--sageink)" : t.type === "saving" || t.type === "card_payment" ? "color:var(--sunink)" : "";
   const title = t.type === "card_payment" ? `Paid ${acc(t.to_account_id)?.name || "card"}` : t.type === "saving" ? ((S.goals || []).find(g => g.id === t.goal_id)?.name || t.note || "Savings") : (t.payee || c?.name || "Expense");
@@ -130,7 +139,7 @@ function viewOverview() {
   ${savingsAccounts().map(a => `<button class="card between asbcard" data-savacc="${a.id}" style="margin-top:10px;width:100%;text-align:left"><div class="row">${window.ART.jar(40)}<div><div class="small muted">${esc(a.name)} savings</div><div class="h2">${rm(savingsBalance(a))}</div></div></div><span class="tiny muted">+ ${rm0(sum(monthTx(m).filter(t => t.type === "saving" && t.to_account_id === a.id)))} this month</span></button>`).join("")}
   ${owed.map(x => `<div class="card between" style="margin-top:10px"><div><div class="small muted">${esc(x.a.name)}</div><div class="h2">${rm(x.owed)} <span class="small muted" style="font-weight:400">owed</span></div></div><button class="btn" data-paycard="${x.a.id}">Pay card</button></div>`).join("")}
   ${bills.length ? `<div class="between"><div class="lbl">Bills due</div><button class="small" style="color:var(--peri)" data-mv="bills">See all</button></div>
-    <div class="list">${bills.slice(0, 4).map(x => `<button class="item" style="width:100%;text-align:left" data-bill="${x.b.id}"><div class="grow"><div class="title">${esc(x.b.name)}</div><div class="tiny muted">${x.b.amount ? rm(x.b.amount) : "Amount varies"} · due ${fmtShort(x.due)}</div></div>${billPill(x)}</button>`).join("")}</div>` : ""}
+    <div class="list">${bills.slice(0, 4).map(x => `<button class="item" style="width:100%;text-align:left" data-bill="${x.b.id}"><div class="grow"><div class="title">${esc(x.b.name)}</div><div class="tiny muted">${x.b.amount ? rm(x.b.amount) : "Amount varies"} · due ${fmtShort(x.due)}${(x.b.people || []).length ? ` · collected ${x.coll.filter(c => c.tx).length}/${x.coll.length}` : ""}</div></div>${billPill(x)}</button>`).join("")}</div>` : ""}
   <div class="between"><div class="lbl">Spending by category</div><span><button class="small" style="color:var(--peri);margin-right:12px" id="mrecap">Recap</button><button class="small" style="color:var(--peri)" id="mbud">Budgets</button></span></div>
   ${cats.length || unc ? `<div class="card">${cats.map(x => `<div style="margin:6px 0 12px"><div class="between small"><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${CCOL[x.c.color]};margin-right:6px"></span>${esc(x.c.name)}</span><span>${rm(x.spent)}${x.budget ? `<span class="muted"> / ${rm0(x.budget)}</span>` : ""}</span></div>${bar(x.spent, x.budget)}</div>`).join("")}
     ${unc ? `<div class="between small" style="margin:6px 0"><span class="muted">No category yet</span><span>${rm(unc)}</span></div>` : ""}</div>` : '<div class="empty">No spending yet this month.</div>'}
@@ -144,14 +153,36 @@ function viewHistory() {
    ${days.length ? days.map(d => { const a = all.filter(t => t.date === d), sp = sum(a.filter(t => t.type === "expense"));
      return `<div class="between"><div class="lbl">${esc(relDay(d))}</div>${sp ? `<span class="tiny muted" style="margin-top:10px">spent ${rm(sp)}</span>` : ""}</div><div class="list">${a.map(txRow).join("")}</div>`; }).join("") : '<div class="empty">Nothing here for this month.</div>'}`;
 }
+function sharedBlock(x) {
+  const b = x.b, share = Number(b.share_amount || 0), got = x.coll.filter(c => c.tx).length, need = x.coll.length;
+  const gotAmt = sum(x.coll.filter(c => c.tx), c => c.tx.amount);
+  return `<div class="pot">
+    <div class="between small"><span><b>Collected ${got} of ${need}</b> · ${rm(gotAmt)} of ${rm(share * need)}</span>${x.paid ? '<span class="pill sage">Rent paid</span>' : got === need ? '<span class="pill sage">All in</span>' : ""}</div>
+    <div class="bar" style="margin:6px 0 8px"><i style="width:${need ? got / need * 100 : 0}%;background:var(--sage)"></i></div>
+    <div class="people">${x.coll.map(c => `<button class="person ${c.tx ? "in" : ""}" data-collect="${b.id}|${esc(c.name)}"><span class="pdot">${c.tx ? "✓" : esc(c.name.slice(0, 1).toUpperCase())}</span>${esc(c.name)}</button>`).join("")}</div>
+    <div class="tiny muted" style="margin-top:6px">Your share ${rm(share)} counts as spending. The others' money just passes through your account.</div></div>`;
+}
 function viewBills() {
   const list = billsFor(S.moneyMonth), others = S.bills.filter(b => !list.some(x => x.b.id === b.id));
-  const total = sum(list, x => x.b.amount), paid = sum(list.filter(x => x.paid), x => x.paid.amount);
-  return `<div class="card between"><div><div class="small muted">This month</div><div class="h2">${rm(paid)} paid <span class="muted" style="font-weight:400">of ~${rm(total)}</span></div></div><button class="btn sun" id="addbill">+ Bill</button></div>
+  const myPart = x => (x.b.people || []).length ? Number(x.b.share_amount || 0) : Number(x.b.amount || 0);
+  const total = sum(list, myPart), paid = sum(list.filter(x => x.paid), x => x.paid.amount);
+  return `<div class="card between"><div><div class="small muted">Your bills this month</div><div class="h2">${rm(paid)} paid <span class="muted" style="font-weight:400">of ~${rm(total)}</span></div></div><button class="btn sun" id="addbill">+ Bill</button></div>
     <div class="lbl">Due this month</div>
-    ${list.length ? `<div class="list">${list.map(x => `<div class="item"><button class="grow" style="text-align:left" data-bill="${x.b.id}"><div class="title">${esc(x.b.name)}</div><div class="tiny muted">${x.paid ? `paid ${rm(x.paid.amount)} on ${fmtShort(x.paid.date)}` : `${x.b.amount ? rm(x.b.amount) : "Amount varies"} · due ${fmtShort(x.due)}`}</div></button>${x.paid ? billPill(x) : `<button class="btn" style="padding:7px 12px" data-paybill="${x.b.id}">Paid</button>`}</div>`).join("")}</div>` : '<div class="empty">No bills yet. Add the ones you pay every month, like your phone plan.</div>'}
+    ${list.length ? list.map(x => `<div class="card billcard"><div class="row"><button class="grow" style="text-align:left;flex:1;min-width:0" data-bill="${x.b.id}"><div class="h2" style="font-size:14px">${esc(x.b.name)}${(x.b.people || []).length ? ` <span class="pill">shared</span>` : ""}</div>
+      <div class="tiny muted">${x.paid ? `paid ${rm(Number(x.paid.amount) + Number(x.pass?.amount || 0))} on ${fmtShort(x.paid.date)}` : `${x.b.amount ? rm(x.b.amount) : "Amount varies"} · due ${fmtShort(x.due)}`}</div></button>
+      ${x.paid ? billPill(x) : `<button class="btn" style="height:34px" data-paybill="${x.b.id}">Paid</button>`}</div>
+      ${(x.b.people || []).length ? sharedBlock(x) : ""}</div>`).join("") : '<div class="empty">No bills yet. Add the ones you pay every month, like your phone plan or rent.</div>'}
     ${others.length ? `<div class="lbl">Yearly, not due this month</div><div class="list">${others.map(b => `<button class="item" style="width:100%;text-align:left" data-bill="${b.id}"><div class="grow"><div class="title">${esc(b.name)}</div><div class="tiny muted">${MONL[(b.due_month || 1) - 1]} ${b.due_day}${b.amount ? " · " + rm(b.amount) : ""}</div></div></button>`).join("")}</div>` : ""}
     <p class="tiny faint" style="text-align:center;margin-top:14px">Tapping Paid saves the bill as spending, so it counts in your budget.</p>`;
+}
+async function toggleCollect(billId, name) {
+  const b = S.bills.find(x => x.id === billId), m = S.moneyMonth;
+  const ex = S.tx.find(x => x.bill_id === b.id && x.bill_period === m && x.type === "collect" && x.payee === name);
+  try {
+    if (ex) { await db.remove("myday_transactions", ex.id); S.tx = S.tx.filter(x => x !== ex); render(); toast(`${name}: marked not paid`); return; }
+    const r = await db.insert("myday_transactions", { type: "collect", amount: Number(b.share_amount || 0), date: m === today().slice(0, 7) ? today() : `${m}-01`, account_id: b.account_id || S.settings.default_account_id, payee: name, source: "bill", bill_id: b.id, bill_period: m });
+    S.tx.unshift(r); window.ART.celebrate(`[data-collect="${b.id}|${name}"] .pdot`, true); render(); toast(`${name} paid ${rm(r.amount)}`);
+  } catch (e) { fail(e); }
 }
 function bindMoney() {
   const mv = n => { const [y, m] = S.moneyMonth.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); S.moneyMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; if (S.moneyMonth < S.txFrom) { S.moneyLoading = true; render(); } ensureMonth(S.moneyMonth).then(() => { S.moneyLoading = false; render(); }).catch(e => { S.moneyLoading = false; fail(e); }); };
@@ -159,7 +190,9 @@ function bindMoney() {
   $("#msetup").onclick = setupSheet;
   document.querySelectorAll("[data-mv]").forEach(b => b.onclick = () => { S.moneyView = b.dataset.mv; render(); window.scrollTo(0, 0); });
   document.querySelectorAll("[data-hf]").forEach(b => b.onclick = () => { S.histFilter = b.dataset.hf; render(); });
-  document.querySelectorAll("[data-tx]").forEach(b => b.onclick = () => txSheet(S.tx.find(t => t.id === b.dataset.tx)));
+  document.querySelectorAll("[data-tx]").forEach(b => b.onclick = () => { const t = S.tx.find(x => x.id === b.dataset.tx);
+    if (t.type === "collect" || t.type === "passthrough") return passSheet(t); txSheet(t); });
+  document.querySelectorAll("[data-collect]").forEach(b => b.onclick = () => { const [id, ...n] = b.dataset.collect.split("|"); toggleCollect(id, n.join("|")); });
   document.querySelectorAll("[data-bill]").forEach(b => b.onclick = () => billSheet(S.bills.find(x => x.id === b.dataset.bill)));
   document.querySelectorAll("[data-paybill]").forEach(b => b.onclick = () => payBill(S.bills.find(x => x.id === b.dataset.paybill)));
   document.querySelectorAll("[data-paycard]").forEach(b => b.onclick = () => txSheet(null, { type: "card_payment", to_account_id: b.dataset.paycard, amount: cardOwed().find(x => x.a.id === b.dataset.paycard)?.owed }));
@@ -273,7 +306,10 @@ function billSheet(b) {
     <div class="field"><label>How often</label>${chips([["monthly", "Every month"], ["yearly", "Once a year"]], fr, "bf")}</div>
     <div class="field" id="bmw" style="${fr === "yearly" ? "" : "display:none"}"><label>Month</label><select id="bm">${MONL.map((n, i) => `<option value="${i + 1}" ${b.due_month === i + 1 ? "selected" : ""}>${n}</option>`).join("")}</select></div>
     <div class="field"><label>Category</label>${chips(expCats().map(c => [c.id, c.name]), cid, "bc")}</div>
-    <div class="field"><label>Usually paid with</label>${chips(S.accounts.map(a => [a.id, a.name]), aid, "bac")}</div>
+    <div class="field"><label>Usually paid with</label>${chips(S.accounts.filter(a => a.kind !== "savings").map(a => [a.id, a.name]), aid, "bac")}</div>
+    <div class="lbl">Shared with others?</div>
+    <div class="field"><label>People who pay you their share (one per line)</label><textarea id="bpp" rows="4" placeholder="Leave empty if it's only yours">${esc((b.people || []).join("\n"))}</textarea></div>
+    <div class="field"><label>Each person's share, including yours (RM)</label><input type="number" inputmode="decimal" step="0.01" id="bsh" value="${b.share_amount ?? ""}" placeholder="480"></div>
     <div class="err" id="berr"></div>
     <button class="btn primary block" id="bsave">${isNew ? "Add bill" : "Save"}</button>
     ${isNew ? "" : '<div class="btnrow" style="margin-top:8px"><button class="btn" id="bpay">Mark paid</button><button class="btn danger" id="bdel">Delete</button></div>'}`, sh => {
@@ -281,7 +317,9 @@ function billSheet(b) {
     sh.querySelectorAll("[data-bc]").forEach(x => x.onclick = () => { cid = x.dataset.bc; sh.querySelectorAll("[data-bc]").forEach(y => y.classList.toggle("on", y === x)); });
     sh.querySelectorAll("[data-bac]").forEach(x => x.onclick = () => { aid = x.dataset.bac; sh.querySelectorAll("[data-bac]").forEach(y => y.classList.toggle("on", y === x)); });
     $("#bsave").onclick = async () => {
-      const o = { name: $("#bn").value.trim(), amount: $("#ba").value === "" ? null : Number($("#ba").value), due_day: Math.max(1, Math.min(31, Number($("#bd").value) || 1)), frequency: fr, due_month: fr === "yearly" ? Number($("#bm").value) : null, category_id: cid, account_id: aid };
+      const people = $("#bpp").value.split("\n").map(x => x.trim()).filter(Boolean), sh = $("#bsh").value === "" ? null : Number($("#bsh").value);
+      if (people.length && !(sh > 0)) { $("#berr").textContent = "Add each person's share."; return; }
+      const o = { people, share_amount: people.length ? sh : null, name: $("#bn").value.trim(), amount: $("#ba").value === "" ? (people.length ? sh * (people.length + 1) : null) : Number($("#ba").value), due_day: Math.max(1, Math.min(31, Number($("#bd").value) || 1)), frequency: fr, due_month: fr === "yearly" ? Number($("#bm").value) : null, category_id: cid, account_id: aid };
       if (!o.name) { $("#berr").textContent = "Give the bill a name."; return; }
       try { if (isNew) S.bills.push(await db.insert("myday_bills", o)); else Object.assign(b, await db.update("myday_bills", b.id, o));
         S.bills.sort((x, y) => x.due_day - y.due_day); closeSheet(); render(); toast(isNew ? "Bill added" : "Bill saved"); } catch (e) { fail(e); }
@@ -293,19 +331,35 @@ function billSheet(b) {
 }
 function payBill(b) {
   const m = S.moneyView === "bills" || S.tab === "money" ? S.moneyMonth : today().slice(0, 7);
-  if (S.tx.some(x => x.bill_id === b.id && x.bill_period === m)) { toast("Already marked paid for this month"); return; }
+  if (S.tx.some(x => x.bill_id === b.id && x.bill_period === m && x.type === "expense")) { toast("Already marked paid for this month"); return; }
   let aid = b.account_id || S.settings.default_account_id;
-  window.MD.openPop(`<h2 class="h2">Paid ${esc(b.name)}</h2><p class="small muted" style="margin:4px 0 14px">This saves it as spending for ${MONL[Number(m.slice(5)) - 1]}.</p>
-    <div class="field"><label>Amount (RM)</label><input type="number" inputmode="decimal" step="0.01" id="pa" value="${b.amount ?? ""}" placeholder="0.00"></div>
-    <div class="field"><label>Paid with</label>${chips(S.accounts.map(a => [a.id, a.name]), aid, "pac")}</div>
+  const shared = (b.people || []).length, share = Number(b.share_amount || 0);
+  window.MD.openPop(`<h2 class="h2">Paid ${esc(b.name)}</h2><p class="small muted" style="margin:4px 0 14px">${shared ? `Only your share counts as spending for ${MONL[Number(m.slice(5)) - 1]}.` : `This saves it as spending for ${MONL[Number(m.slice(5)) - 1]}.`}</p>
+    <div class="field"><label>${shared ? "Total you paid (RM)" : "Amount (RM)"}</label><input type="number" inputmode="decimal" step="0.01" id="pa" value="${b.amount ?? ""}" placeholder="0.00"></div>
+    ${shared ? `<p class="tiny muted" id="psplit" style="margin:-4px 2px 10px"></p>` : ""}
+    <div class="field"><label>Paid with</label>${chips(S.accounts.filter(a => a.kind !== "savings").map(a => [a.id, a.name]), aid, "pac")}</div>
     <div class="field"><label>Date paid</label><input type="date" id="pd" value="${m === today().slice(0, 7) ? today() : billsFor(m).find(x => x.b.id === b.id)?.due || today()}"></div>
     <div class="err" id="perr2"></div><button class="btn primary block" id="pok">Save</button>`, sh => {
+    const upd = () => { const el = $("#psplit"); if (!el) return; const tot = Number($("#pa").value) || 0; el.textContent = `Your share ${rm(Math.min(share, tot))} · others' shares ${rm(Math.max(0, tot - share))} (not spending)`; };
+    if (shared) { $("#pa").oninput = upd; upd(); }
     sh.querySelectorAll("[data-pac]").forEach(x => x.onclick = () => { aid = x.dataset.pac; sh.querySelectorAll("[data-pac]").forEach(y => y.classList.toggle("on", y === x)); });
     $("#pok").onclick = async () => {
       const amount = Math.round(Number($("#pa").value) * 100) / 100; if (!(amount > 0)) { $("#perr2").textContent = "Enter how much you paid."; return; }
-      try { S.tx.unshift(await db.insert("myday_transactions", { type: "expense", amount, date: $("#pd").value, category_id: b.category_id, account_id: aid, payee: b.name, source: "bill", bill_id: b.id, bill_period: m }));
+      const mine = shared ? Math.min(share, amount) : amount, rest = Math.round((amount - mine) * 100) / 100, date = $("#pd").value;
+      try {
+        S.tx.unshift(await db.insert("myday_transactions", { type: "expense", amount: mine, date, category_id: b.category_id, account_id: aid, payee: b.name, source: "bill", bill_id: b.id, bill_period: m }));
+        if (rest > 0) S.tx.unshift(await db.insert("myday_transactions", { type: "passthrough", amount: rest, date, account_id: aid, payee: b.name, note: "Others' shares", source: "bill", bill_id: b.id, bill_period: m }));
         S.tx.sort((x, y) => y.date.localeCompare(x.date)); closeSheet(); render(); toast(`${b.name} marked paid`); } catch (e) { fail(e); }
     };
+  });
+}
+function passSheet(t) {
+  const bl = S.bills.find(x => x.id === t.bill_id);
+  window.MD.openPop(`<h2 class="h2">${t.type === "collect" ? `${esc(t.payee || "")} paid you ${rm(t.amount)}` : `Others' shares of ${esc(bl?.name || "the bill")}`}</h2>
+    <p class="small muted" style="margin:4px 0 14px">${fmtShort(t.date)} · ${esc(acc(t.account_id)?.name || "")}. This only moves money through your account. It isn't counted as income or spending.</p>
+    <button class="btn danger block" id="pxdel">Remove this entry</button>`, () => {
+    $("#pxdel").onclick = async () => { try { await db.remove("myday_transactions", t.id); S.tx = S.tx.filter(x => x.id !== t.id); closeSheet(); render();
+      toast("Removed", async () => { S.tx.unshift(await db.restore("myday_transactions", t.id)); render(); }); } catch (e) { fail(e); } };
   });
 }
 

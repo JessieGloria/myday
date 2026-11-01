@@ -244,6 +244,7 @@ function closeMenu(instant) {
 /* ---------- render root ---------- */
 function render() {
   const app = $("#app");
+  window.SCENES && window.SCENES.show(S.tab);
   if (!session) { renderLogin(app); return; }
   if (!S.loaded) {
     app.innerHTML = skeleton();
@@ -623,7 +624,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 10 (pages)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 12 (brighter scenes)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);
