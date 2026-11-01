@@ -81,7 +81,7 @@ function billsFor(m) {
 }
 const billPill = x => x.status === "paid" ? `<span class="pill sage">Paid</span>` : x.status === "late" ? `<span class="pill rose">${-x.days} day${x.days === -1 ? "" : "s"} late</span>` : x.status === "soon" ? `<span class="pill warn">${x.days === 0 ? "Today" : x.days === 1 ? "Tomorrow" : `in ${x.days} days`}</span>` : `<span class="pill">${fmtShort(x.due)}</span>`;
 window.MD.moneyToday = () => sum(S.tx.filter(t => t.type === "expense" && t.date === today()));
-window.MD.billsDueSoon = () => billsFor(curMonth()).filter(x => x.status === "late" || x.status === "soon");
+window.MD.billsDueSoon = () => { const w = new Set(rentWaiting().map(r => r.x.b.id)); return billsFor(curMonth()).filter(x => (x.status === "late" || x.status === "soon") && !w.has(x.b.id)); };
 
 /* ---------- views ---------- */
 function txRow(t) {
@@ -160,7 +160,7 @@ function sharedBlock(x) {
   return `<div class="pot">
     <div class="between small"><span><b>Collected ${got} of ${need}</b> · ${rm(gotAmt)} of ${rm(share * need)}</span>${x.paid ? '<span class="pill sage">Rent paid</span>' : got === need ? '<span class="pill sage">All in</span>' : ""}</div>
     <div class="bar" style="margin:6px 0 8px"><i style="width:${need ? got / need * 100 : 0}%;background:var(--sage)"></i></div>
-    <div class="people">${x.coll.map(c => `<button class="person ${c.tx ? "in" : ""}" data-collect="${b.id}|${esc(c.name)}"><span class="pdot">${c.tx ? "✓" : esc(c.name.slice(0, 1).toUpperCase())}</span>${esc(c.name)}</button>`).join("")}</div>
+    <div class="people">${x.coll.map(c => `<button class="person ${c.tx ? "in" : ""}" data-collect="${b.id}|${esc(c.name)}"><span class="pdot">${c.tx ? "✓" : esc(c.name.slice(0, 1).toUpperCase())}</span>${esc(c.name)}${c.tx ? `<span class="tiny" style="opacity:.75"> · ${esc(acc(c.tx.account_id)?.name || "")}</span>` : ""}</button>`).join("")}</div>
     <div class="tiny muted" style="margin-top:6px">Your share ${rm(share)} counts as spending. The others' money just passes through your account.</div></div>`;
 }
 function viewBills() {
@@ -179,11 +179,18 @@ function viewBills() {
 async function toggleCollect(billId, name) {
   const b = S.bills.find(x => x.id === billId), m = S.moneyMonth;
   const ex = S.tx.find(x => x.bill_id === b.id && x.bill_period === m && x.type === "collect" && x.payee === name);
-  try {
-    if (ex) { await db.remove("myday_transactions", ex.id); S.tx = S.tx.filter(x => x !== ex); render(); toast(`${name}: marked not paid`); return; }
-    const r = await db.insert("myday_transactions", { type: "collect", amount: Number(b.share_amount || 0), date: m === today().slice(0, 7) ? today() : `${m}-01`, account_id: b.account_id || S.settings.default_account_id, payee: name, source: "bill", bill_id: b.id, bill_period: m });
-    S.tx.unshift(r); window.ART.celebrate(`[data-collect="${b.id}|${name}"] .pdot`, true); render(); toast(`${name} paid ${rm(r.amount)}`);
-  } catch (e) { fail(e); }
+  if (ex) { try { await db.remove("myday_transactions", ex.id); S.tx = S.tx.filter(x => x !== ex); render(); toast(`${name}: marked not paid`); } catch (e) { fail(e); } return; }
+  // ask which account it came into, remembering where this person paid last time
+  const banks = S.accounts.filter(a => a.kind === "bank");
+  const last = S.tx.find(x => x.type === "collect" && x.bill_id === b.id && x.payee === name);
+  const pick = last?.account_id || b.account_id || S.settings.default_account_id;
+  window.MD.openPop(`<h2 class="h2">${esc(name)} paid ${rm(b.share_amount)}</h2><p class="small muted" style="margin:4px 0 14px">Which account did it come into?</p>
+    <div class="acctpick">${banks.map(a => `<button data-into="${a.id}" class="${a.id === pick ? "on" : ""}"><span class="accdot" style="background:${/cimb/i.test(a.name) ? "#C8102E" : /maybank/i.test(a.name) ? "#F6C500" : "var(--peri)"}"></span>${esc(a.name)}</button>`).join("")}</div>`, sh => {
+    sh.querySelectorAll("[data-into]").forEach(btn => btn.onclick = async () => {
+      try { const r = await db.insert("myday_transactions", { type: "collect", amount: Number(b.share_amount || 0), date: m === today().slice(0, 7) ? today() : `${m}-01`, account_id: btn.dataset.into, payee: name, source: "bill", bill_id: b.id, bill_period: m });
+        S.tx.unshift(r); closeSheet(); window.ART.celebrate(`[data-collect="${b.id}|${name}"] .pdot`, true); render(); toast(`${name} paid ${rm(r.amount)} into ${acc(btn.dataset.into)?.name}`); } catch (e) { fail(e); }
+    });
+  });
 }
 function bindMoney() {
   const mv = n => { const [y, m] = S.moneyMonth.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); S.moneyMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; if (S.moneyMonth < S.txFrom) { S.moneyLoading = true; render(); } ensureMonth(S.moneyMonth).then(() => { S.moneyLoading = false; render(); }).catch(e => { S.moneyLoading = false; fail(e); }); };
@@ -388,12 +395,16 @@ function setupSheet() {
   const row = c => `<div class="item"><span style="width:10px;height:10px;border-radius:50%;flex:none;background:${CCOL[c.color]}"></span><div class="grow"><input type="text" value="${esc(c.name)}" data-rn="${c.id}" style="height:34px"></div>
      <select data-cc="${c.id}" style="width:96px;height:34px;line-height:34px">${Object.keys(CCOL).map(k => `<option ${c.color === k ? "selected" : ""}>${k}</option>`).join("")}</select>
      <button class="x" data-rd="${c.id}" aria-label="Remove">×</button></div>`;
-  openSheet(`<div class="row" style="margin-bottom:4px">${window.ART.jar(44)}<h2 class="h2">Categories</h2></div>
+  openSheet(`<div class="row" style="margin-bottom:4px">${window.ART.jar(44)}<h2 class="h2">Money settings</h2></div>
     <p class="small muted" style="margin:0 2px">Rename, recolour, add or remove the categories you pick when adding money.</p>
     <div class="lbl">Spending</div><div class="list">${expCats().map(row).join("")}</div>
     <button class="addline" id="addc">+ Add spending category</button>
     <div class="lbl">Income</div><div class="list">${incCats().map(row).join("")}</div>
-    <button class="addline" id="addi">+ Add income category</button>`, sh => {
+    <button class="addline" id="addi">+ Add income category</button>
+    <div class="lbl">Salary reminder</div>
+    <div class="field"><label>Start asking "Has your salary come in?" from day</label><input type="number" min="1" max="31" id="sfd" value="${S.settings.salary_from_day || 20}"></div>
+    <button class="btn block" id="sfdsave">Save</button>`, sh => {
+    $("#sfdsave").onclick = async () => { try { S.settings = (await rest("PATCH", `myday_settings?user_id=eq.${S.settings.user_id}`, { salary_from_day: Math.max(1, Math.min(31, Number($("#sfd").value) || 20)) }))[0]; toast("Saved"); render(); } catch (e) { fail(e); } };
     sh.querySelectorAll("[data-rn]").forEach(inp => inp.onchange = async () => { const id = inp.dataset.rn, v = inp.value.trim(); if (!v) return;
       try { Object.assign(cat(id), await db.update("myday_categories", id, { name: v })); toast("Renamed"); } catch (e) { fail(e); } });
     sh.querySelectorAll("[data-cc]").forEach(x => x.onchange = async () => { try { Object.assign(cat(x.dataset.cc), await db.update("myday_categories", x.dataset.cc, { color: x.value })); setupSheet(); } catch (e) { fail(e); } });
@@ -406,6 +417,69 @@ function setupSheet() {
   });
 }
 
+/* ---------- reminders shown on Today: salary, rent collection, card bill ---------- */
+const salaryCat = () => S.categories.find(c => c.kind === "income" && /salary|gaji/i.test(c.name));
+const lastSalary = () => S.tx.find(t => t.type === "income" && t.category_id === salaryCat()?.id);
+const snoozed = k => { try { return localStorage.getItem("myday.snooze." + k) === today(); } catch (e) { return false; } };
+const snooze = k => { try { localStorage.setItem("myday.snooze." + k, today()); } catch (e) {} };
+function salaryDue() {
+  const m = today().slice(0, 7), day = Number(today().slice(8));
+  if (day < (S.settings.salary_from_day || 20) || snoozed("salary")) return false;
+  return !S.tx.some(t => t.type === "income" && t.date.startsWith(m) && t.category_id === salaryCat()?.id);
+}
+function rentWaiting() {
+  const m = today().slice(0, 7);
+  return billsFor(m).filter(x => (x.b.people || []).length && !x.paid && x.days <= 7).map(x => ({ x, waiting: x.coll.filter(c => !c.tx).map(c => c.name) })).filter(r => r.waiting.length);
+}
+function cardsToPay() {
+  return cardOwed().filter(c => c.owed > 0.004 && !snoozed("card" + c.a.id)).map(c => {
+    const pays = S.tx.filter(t => t.type === "card_payment" && t.to_account_id === c.a.id);
+    const lastPay = pays[0]?.date, firstSpend = S.tx.filter(t => t.type === "expense" && t.account_id === c.a.id).map(t => t.date).sort()[0];
+    const since = lastPay || firstSpend; const days = since ? Math.round((parse(today()) - parse(since)) / 864e5) : 0;
+    return { ...c, lastPay, days };
+  }).filter(c => c.days >= 7);
+}
+window.MD.extraDue = () => {
+  const out = [];
+  if (salaryDue()) { const ls = lastSalary();
+    out.push(["0", `<div class="item duecard"><span class="dueic" style="background:var(--sagebg)">${I.coin}</span><div class="grow"><div class="title">Has your salary come in?</div><div class="tiny muted">${ls ? `Last time ${rm(ls.amount)} on ${fmtShort(ls.date)}` : "Add it once it's in your account"}</div></div>
+      <div class="duebtns"><button class="btn sun" data-salary="1">Add</button><button class="small muted" data-snooze="salary">Not yet</button></div></div>`]); }
+  rentWaiting().forEach(r => out.push([r.x.due, `<div class="item duecard"><span class="dueic" style="background:var(--lav)">${I.home}</span><div class="grow"><div class="title">${esc(r.x.b.name)}: waiting on ${esc(r.waiting.join(", "))}</div><div class="tiny muted">Due ${fmtShort(r.x.due)} · ${rm(Number(r.x.b.share_amount) * r.waiting.length)} still to collect</div></div>
+      <div class="duebtns"><button class="btn" data-remind="${r.x.b.id}">Remind</button></div></div>`]));
+  cardsToPay().forEach(c => out.push(["1", `<div class="item duecard"><span class="dueic" style="background:var(--rosebg)">${I.wallet}</span><div class="grow"><div class="title">Pay ${esc(c.a.name)}</div><div class="tiny muted">${rm(c.owed)} owed · ${c.lastPay ? `last paid ${c.days} days ago` : `not paid in ${c.days} days`}</div></div>
+      <div class="duebtns"><button class="btn sun" data-paycard2="${c.a.id}">Pay</button><button class="small muted" data-snooze="card${c.a.id}">Later</button></div></div>`]));
+  return out;
+};
+window.MD.bindExtraDue = () => {
+  document.querySelectorAll("[data-salary]").forEach(b => b.onclick = salarySheet);
+  document.querySelectorAll("[data-snooze]").forEach(b => b.onclick = () => { snooze(b.dataset.snooze); render(); toast("Hidden for today"); });
+  document.querySelectorAll("[data-remind]").forEach(b => b.onclick = () => remindRent(S.bills.find(x => x.id === b.dataset.remind)));
+  document.querySelectorAll("[data-paycard2]").forEach(b => b.onclick = () => txSheet(null, { type: "card_payment", to_account_id: b.dataset.paycard2, amount: Math.round(cardOwed().find(x => x.a.id === b.dataset.paycard2)?.owed * 100) / 100 }));
+};
+function salarySheet() {
+  const ls = lastSalary(); let aid = S.settings.salary_account_id || ls?.account_id || S.accounts.find(a => /maybank/i.test(a.name) && a.kind === "bank")?.id || S.settings.default_account_id;
+  window.MD.openPop(`<h2 class="h2">Salary is in</h2><p class="small muted" style="margin:4px 0 14px">Saved as income for ${MONL[Number(today().slice(5, 7)) - 1]}.</p>
+    <div class="field"><label>Amount (RM)</label><input type="number" inputmode="decimal" step="0.01" id="slm" value="${S.settings.salary_amount ?? ls?.amount ?? ""}" placeholder="0.00"></div>
+    <div class="field"><label>Into</label>${chips(S.accounts.filter(a => a.kind === "bank").map(a => [a.id, a.name]), aid, "sla")}</div>
+    <div class="field"><label>Date</label><input type="date" id="sld2" value="${today()}"></div>
+    <div class="err" id="slerr"></div><button class="btn primary block" id="slok">Save</button>`, sh => {
+    sh.querySelectorAll("[data-sla]").forEach(x => x.onclick = () => { aid = x.dataset.sla; sh.querySelectorAll("[data-sla]").forEach(y => y.classList.toggle("on", y === x)); });
+    $("#slok").onclick = async () => {
+      const amount = Math.round(Number($("#slm").value) * 100) / 100; if (!(amount > 0)) { $("#slerr").textContent = "Enter your salary amount."; return; }
+      try { S.tx.unshift(await db.insert("myday_transactions", { type: "income", amount, date: $("#sld2").value || today(), category_id: salaryCat()?.id || null, account_id: aid, payee: "Salary", source: "manual" }));
+        S.tx.sort((x, y) => y.date.localeCompare(x.date));
+        S.settings = (await rest("PATCH", `myday_settings?user_id=eq.${S.settings.user_id}`, { salary_amount: amount, salary_account_id: aid }))[0];
+        closeSheet(); render(); window.ART.confetti(null, 24); toast(`Salary ${rm(amount)} added`); } catch (e) { fail(e); }
+    };
+  });
+}
+async function remindRent(b) {
+  const m = today().slice(0, 7), x = billsFor(m).find(k => k.b.id === b.id);
+  const waiting = x.coll.filter(c => !c.tx).map(c => c.name);
+  const text = `Hi ${waiting.length === 1 ? waiting[0] : "all"}! Just a gentle reminder for ${b.name.toLowerCase()} this month: RM ${Number(b.share_amount).toFixed(0)} each, due ${fmtShort(x.due)}. Thank you!`;
+  try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { if (e.name === "AbortError") return; }
+  try { await navigator.clipboard.writeText(text); toast("Reminder copied. Paste it in WhatsApp"); } catch (e) { location.href = "https://wa.me/?text=" + encodeURIComponent(text); }
+}
 window.MD.ensureMonth = ensureMonth;
 window.MD.views.money = viewMoney;
 window.MD.binds.money = bindMoney;

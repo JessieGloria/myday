@@ -317,6 +317,7 @@ function dueSoon() {
   (window.MD.remindersDueSoon ? window.MD.remindersDueSoon() : []).forEach(r => { const d = Math.round((parse(r.due_date) - parse(today())) / 864e5);
     items.push([r.due_date, `<button class="item" style="width:100%;text-align:left" data-dsrem="${r.id}"><div class="grow"><div class="title">${esc(r.name)}</div><div class="tiny muted">Life admin</div></div><span class="pill ${d < 0 ? "rose" : "warn"}">${d < 0 ? -d + "d late" : d === 0 ? "Today" : d === 1 ? "Tomorrow" : "in " + d + " days"}</span></button>`]); });
   (window.MD.billsDueSoon ? window.MD.billsDueSoon() : []).forEach(x => items.push([x.due, `<button class="item" style="width:100%;text-align:left" data-dsbill="1"><div class="grow"><div class="title">${esc(x.b.name)}</div><div class="tiny muted">Bill${x.b.amount ? " · RM " + Number(x.b.amount).toFixed(2) : ""}</div></div><span class="pill ${x.status === "late" ? "rose" : "warn"}">${x.days < 0 ? -x.days + "d late" : x.days === 0 ? "Today" : x.days === 1 ? "Tomorrow" : "in " + x.days + " days"}</span></button>`]));
+  if (window.MD.extraDue) items.push(...window.MD.extraDue());
   items.sort((a, b) => a[0].localeCompare(b[0]));
   const recap = new Date().getDate() <= 7 && window.MD.recapSheet && S.tx && S.tx.some(t => t.date.startsWith(window.MD.lastMonth()));
   const lm = recap ? ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][Number(window.MD.lastMonth().slice(5)) - 1] : "";
@@ -324,6 +325,7 @@ function dueSoon() {
     + (recap ? `<button class="card between" id="recapcard" style="width:100%;text-align:left;margin-top:10px;background:var(--lav);border:none"><div><div class="h2">Your ${lm} recap</div><div class="small muted">Money, days, and what you learned</div></div>${I.right.replace("<svg", '<svg width="20" height="20"')}</button>` : "");
 }
 function bindToday() {
+  window.MD.bindExtraDue && window.MD.bindExtraDue();
   document.querySelectorAll("[data-dsrem]").forEach(b => b.onclick = () => window.MD.remSheet(S.reminders.find(r => r.id === b.dataset.dsrem)));
   document.querySelectorAll("[data-dsbill]").forEach(b => b.onclick = () => { S.tab = "money"; S.moneyView = "bills"; S.moneyMonth = today().slice(0, 7); render(); window.scrollTo(0, 0); });
   const rc = $("#recapcard"); if (rc) rc.onclick = () => window.MD.recapSheet();
@@ -699,7 +701,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 15 (auto refresh)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 17 (rent accounts)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);

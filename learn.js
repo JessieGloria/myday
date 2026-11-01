@@ -90,8 +90,16 @@ function viewLearn() {
   </div>
   <form class="addbar" id="ladd" style="margin-top:14px"><input type="text" id="lin" placeholder="Plant a main topic" autocomplete="off"><button class="btn sun" type="submit">Plant</button></form>
   ${growing.length ? `<div class="lbl">Growing</div>${growing.map(t => topicCard(t, timer)).join("")}` : `<div class="empty">Plant a topic you'd like to learn. Log your study time and watch it grow.</div>`}
-  ${garden.length ? `<div class="lbl">Your garden · ${garden.length} learned</div><div class="garden">${garden.map(t => `<button data-topic="${t.id}">${plant(4, colorOf(t), 54, true)}<span>${esc(t.title)}</span></button>`).join("")}</div>` : ""}`;
+  ${(() => { const wilt = garden.filter(isWilting), fresh = garden.filter(t => !isWilting(t));
+    return (wilt.length ? `<div class="lbl">Needs a little revision · ${wilt.length}</div>${wilt.map(t => `<div class="card topic wiltcard" id="tc-${t.id}"><div class="topic-main"><div class="pot wilted">${plant(4, colorOf(t), 62)}</div>
+        <div style="flex:1;min-width:0"><div class="h2" style="font-size:14px">${esc(t.title)}</div><div class="tiny muted">Last touched ${daysSince(t)} days ago. A quick revise brings it back to bloom.</div></div></div>
+        <div class="topic-acts"><button class="btn sun" data-revise="${t.id}">${drop()} Revise</button><button class="btn" data-topic="${t.id}">Notes</button></div></div>`).join("")}` : "")
+      + (fresh.length ? `<div class="lbl">Your garden · ${garden.length} learned</div><div class="garden">${fresh.map(t => `<button data-topic="${t.id}">${plant(4, colorOf(t), 54, true)}<span>${esc(t.title)}</span></button>`).join("")}</div>` : (wilt.length ? "" : "")); })()}`;
 }
+// bloomed topics wilt if you haven't studied them for a while (21 days by default)
+function lastTouched(t) { const last = S.sessions.find(x => x.topic_id === t.id)?.date, done = t.done_at ? ymd(new Date(t.done_at)) : null; return [last, done].filter(Boolean).sort().pop() || today(); }
+const daysSince = t => Math.round((parse(today()) - parse(lastTouched(t))) / 864e5);
+const isWilting = t => daysSince(t) >= (S.settings.revise_after_days || 21);
 function topicCard(t, timer) {
   const st = stageOf(t), sb = subsOf(t), done = sb.filter(x => x.done_at).length;
   const mins = minsOf(t), last = S.sessions.find(x => x.topic_id === t.id);
@@ -141,6 +149,10 @@ function viewBooks() {
   return `<div class="card leave between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">READING</div>
       <div style="font-size:23px;font-weight:700;font-family:Nunito,Inter,sans-serif">${weekPages} <span style="font-size:12px;font-weight:400;color:var(--navytext)">pages this week</span></div>
       <div class="small muted">${finishedYr} book${finishedYr === 1 ? "" : "s"} finished in ${yr}</div></div>${bookArt("rose", .6, 46)}</div>
+    ${(() => { const g = Number(S.settings.reading_goal || 0), slots = g ? Math.max(g, finishedYr) : 0;
+      return `<button class="card goalcard" id="rgoal" style="margin-top:10px;width:100%;text-align:left">${g ? `<div class="between"><div class="h2" style="font-size:14px">${yr} reading goal</div><span class="pctbadge">${finishedYr} of ${g}</span></div>
+        <div class="minishelf">${Array.from({ length: Math.min(slots, 24) }, (_, i) => `<i class="${i < finishedYr ? "on" : ""}" style="${i < finishedYr ? `background:${["#E8A0A0", "#C9CBF3", "#F6D86B", "#9CBBA4", "#8E92E0"][i % 5]};height:${26 + (i * 7) % 12}px` : ""}"></i>`).join("")}</div>
+        <div class="tiny muted">${finishedYr >= g ? "Goal reached. Well done!" : `${g - finishedYr} more to go this year`}</div>` : `<div class="h2" style="font-size:14px">Set a reading goal for ${yr}</div><div class="tiny muted">How many books would you like to finish this year?</div>`}</button>`; })()}
     <button class="btn block" id="addbook" style="margin-top:14px">+ Add a book</button>
     ${reading.length ? `<div class="lbl">Reading now</div>${reading.map(card).join("")}` : '<div class="empty">Add a book you\'re reading and keep track of your page.</div>'}
     ${done.length ? `<div class="lbl">Finished shelf · ${done.length}</div><div class="shelf">${done.map((b, i) => { const [lite, deep] = BCOL[b.color] || BCOL.lavender;
@@ -148,6 +160,13 @@ function viewBooks() {
 }
 function bindBooks() {
   $("#addbook").onclick = () => bookSheet(null);
+  $("#rgoal").onclick = () => window.MD.openPop(`<h2 class="h2">Reading goal for ${today().slice(0, 4)}</h2><p class="small muted" style="margin:4px 0 14px">How many books would you like to finish this year?</p>
+    <div class="field"><label>Books</label><input type="number" inputmode="numeric" min="1" id="rg" value="${S.settings.reading_goal || ""}" placeholder="12"></div>
+    <button class="btn primary block" id="rgs">Save</button>`, () => {
+    $("#rg").focus();
+    $("#rgs").onclick = async () => { const v = Number($("#rg").value); if (!(v > 0)) { window.ART.nudge($("#rg")); return; }
+      try { S.settings = (await window.MD.rest("PATCH", `myday_settings?user_id=eq.${S.settings.user_id}`, { reading_goal: Math.round(v) }))[0]; closeSheet(); render(); toast("Reading goal saved"); } catch (e) { fail(e); } };
+  });
   document.querySelectorAll("[data-book]").forEach(b => b.onclick = () => bookSheet(S.books.find(x => x.id === b.dataset.book)));
   document.querySelectorAll("[data-page]").forEach(b => b.onclick = () => pageSheet(S.books.find(x => x.id === b.dataset.page)));
   document.querySelectorAll("[data-finish]").forEach(b => b.onclick = () => { const bk = S.books.find(x => x.id === b.dataset.finish); setPage(bk, bk.total_pages || bk.current_page, true); });
@@ -215,6 +234,7 @@ function bindLearn() {
     if (!v) { window.ART.nudge($("#lin"), "Type a topic, then tap Plant"); return; }
     try { const t = await db.insert("myday_topics", { title: v, stage: 0 }); S.topics.push(t); window.ART.celebrate(`#tc-${t.id} .pot`); render(); setTimeout(() => document.querySelector(`[data-subadd="${t.id}"] input`)?.focus(), 80); } catch (er) { fail(er); } };
   document.querySelectorAll("[data-topic]").forEach(b => b.onclick = () => topicSheet(S.topics.find(x => x.id === b.dataset.topic)));
+  document.querySelectorAll("[data-revise]").forEach(b => b.onclick = () => waterSheet(S.topics.find(x => x.id === b.dataset.revise), true));
   document.querySelectorAll("[data-water]").forEach(b => b.onclick = () => waterSheet(S.topics.find(x => x.id === b.dataset.water)));
   document.querySelectorAll("[data-sub]").forEach(b => b.onclick = () => toggleSub(S.subs.find(x => x.id === b.dataset.sub)));
   document.querySelectorAll("[data-subadd]").forEach(f => f.onsubmit = async e => { e.preventDefault(); const inp = f.querySelector("input"), v = inp.value.trim();
@@ -256,9 +276,9 @@ async function grow(t, by) {
     else { window.ART.celebrate(`#tc-${t.id} .pot`, by > 0); render(); toast(`${t.title} grew to ${STAGES[ns][0].toLowerCase()}`); }
   } catch (e) { fail(e); }
 }
-function waterSheet(t) {
+function waterSheet(t, revise) {
   let mins = 30;
-  window.MD.openPop(`<div class="row" style="gap:12px">${plant(stageOf(t), colorOf(t), 56)}<div><h2 class="h2">Log study</h2><div class="small muted">${esc(t.title)}</div></div></div>
+  window.MD.openPop(`<div class="row" style="gap:12px">${plant(stageOf(t), colorOf(t), 56)}<div><h2 class="h2">${revise ? "Revise" : "Log study"}</h2><div class="small muted">${esc(t.title)}</div></div></div>
     <div class="lbl">How long?</div>
     <div class="paint" style="margin:0">${[15, 30, 45, 60, 90].map(m => `<button data-m="${m}" class="${m === mins ? "on" : ""}">${hm(m)}</button>`).join("")}</div>
     <div class="field" style="margin-top:10px"><label>Or type minutes</label><input type="number" inputmode="numeric" id="wm" placeholder="30"></div>
@@ -269,7 +289,7 @@ function waterSheet(t) {
     $("#wsave").onclick = async () => {
       const m = Number($("#wm").value) || mins; if (!(m > 0)) { window.ART.nudge($("#wm")); return; }
       try { const r = await logStudy(t, Math.round(m), $("#wd").value || today()); const note = $("#wn").value.trim(); if (note) Object.assign(r, await db.update("myday_study_sessions", r.id, { note }));
-        closeSheet(); window.ART.celebrate(`#tc-${t.id} .pot`); render(); dropRain(t); toast(`${hm(Math.round(m))} logged`); } catch (e) { fail(e); }
+        closeSheet(); if (revise) { render(); window.ART.confetti(null, 22); toast(`${t.title} is blooming again`); } else { window.ART.celebrate(`#tc-${t.id} .pot`); render(); dropRain(t); toast(`${hm(Math.round(m))} logged`); } } catch (e) { fail(e); }
     };
   });
 }
