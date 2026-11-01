@@ -405,7 +405,7 @@ function viewPlan() {
   }
   return `<div class="strip" id="strip">${strip}</div>
     <div class="between" style="margin:6px 2px 10px"><div class="h2">${esc(relDay(sel))}</div><span class="pill ${info.kind === "oncall" ? "navy" : info.kind === "leave" ? "sage" : info.kind === "work" ? "" : "warn"}">${esc(lab.title)}</span></div>
-    <p class="tiny muted" style="margin:-4px 2px 10px">Tap any hour to add a plan there.</p>
+    <p class="tiny muted" style="margin:-4px 2px 10px">Tap any hour and type. Tap a plan to change its time, colour or note.</p>
     ${info.prevOncall ? `<div class="tiny muted" style="margin:0 2px 8px">On-call from yesterday ends at 8am.</div>` : ""}
     ${anytime.length ? `<div class="lbl">Anytime</div><div class="anyt">${anytime.map(p => `<button class="blk c-${p.color}" data-plan="${p.id}"><div class="bt">${esc(p.title)}</div>${p.note ? `<div class="bs">${esc(p.note)}</div>` : ""}</button>`).join("")}</div>` : ""}
     <div class="hours" id="hours">${grid}</div>`;
@@ -415,7 +415,26 @@ function bindPlan() {
   document.querySelectorAll("[data-pd]").forEach(b => b.onclick = () => { S.planDate = b.dataset.pd; render(); });
   document.querySelectorAll("[data-plan]").forEach(b => b.onclick = () => planSheet(S.plans.find(p => p.id === b.dataset.plan)));
   document.querySelectorAll("[data-auto]").forEach(b => b.onclick = () => daySheet(S.planDate));
-  document.querySelectorAll("[data-slot]").forEach(b => b.onclick = () => planSheet(null, S.planDate, b.dataset.slot));
+  // type straight into the timeline: tap an hour, write, press return
+  document.querySelectorAll("[data-slot]").forEach(b => b.onclick = () => {
+    const at = b.dataset.slot, inp = document.createElement("input");
+    inp.type = "text"; inp.className = "slotin"; inp.enterKeyHint = "done"; inp.autocomplete = "off";
+    inp.placeholder = `What's at ${t12(at)}?`;
+    b.replaceWith(inp); inp.focus();
+    let done = false;
+    const save = async () => {
+      if (done) return; done = true;
+      const v = inp.value.trim(); if (!v) { render(); return; }
+      // "7:30 Breakfast" or "7-8:30 Gym" keeps its own time; otherwise it uses the hour you tapped
+      const parsed = /^\s*\d/.test(v) ? parsePlanText(v)[0] : null;
+      const start = parsed?.start || at, end = parsed?.start ? parsed.end : `${pad((Number(at.slice(0, 2)) + 1) % 24)}:00`;
+      inp.disabled = true;
+      try { const r = await db.insert("myday_plans", { date: S.planDate, title: (parsed?.start ? parsed.title : v).slice(0, 120), start_time: start, end_time: end, color: "lavender" });
+        S.plans.push(r); window.ART.celebrate(`[data-plan="${r.id}"]`); render(); } catch (e) { done = false; inp.disabled = false; fail(e); }
+    };
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); save(); } if (e.key === "Escape") { done = true; render(); } });
+    inp.addEventListener("blur", save);
+  });
 }
 const COLORS = [["lavender", "var(--lav2)"], ["sage", "var(--sage)"], ["sun", "var(--sun)"], ["rose", "var(--rose)"], ["navy", "var(--navy)"]];
 function planSheet(p, date, at) {
@@ -680,7 +699,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 13 (hour planner)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 14 (type on timeline)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);
