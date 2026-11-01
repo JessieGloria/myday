@@ -51,6 +51,18 @@ const savingsAccounts = () => S.accounts.filter(a => a.kind === "savings");
 const savingsBalance = a => Number(a.opening_balance || 0) + (S.savingTx || []).filter(t => t.to_account_id === a.id).reduce((s, t) => s + Number(t.amount), 0);
 window.MD.savingsAccounts = () => savingsAccounts().map(a => ({ a, balance: savingsBalance(a) }));
 async function refreshSaving() { S.savingTx = await db.list("myday_transactions", "type=eq.saving&select=id,amount,to_account_id,date"); }
+// bank / cash balance: the balance you gave, plus everything recorded after that moment
+function accBalance(a) {
+  if (!a.balance_set_at) return null;
+  const since = S.tx.filter(t => t.created_at >= a.balance_set_at);
+  let b = Number(a.opening_balance || 0);
+  since.forEach(t => {
+    const amt = Number(t.amount);
+    if (t.type === "income" && t.account_id === a.id) b += amt;
+    if ((t.type === "expense" || t.type === "saving" || t.type === "card_payment") && t.account_id === a.id) b -= amt;
+  });
+  return b;
+}
 function cardOwed() {
   return S.accounts.filter(a => a.kind === "card").map(a => ({ a, owed: sum(S.tx.filter(t => t.type === "expense" && t.account_id === a.id)) - sum(S.tx.filter(t => t.type === "card_payment" && t.to_account_id === a.id)) }));
 }
@@ -112,6 +124,8 @@ function viewOverview() {
       <div><div class="muted">Spent</div><div style="font-size:15px;font-weight:600;color:#F3B7B7">${rm(tt.spent)}</div></div>
       <div><div class="muted">Saved</div><div style="font-size:15px;font-weight:600;color:#F6D86B">${rm(tt.saved)}</div></div></div>
   </div>
+  ${(() => { const banks = S.accounts.filter(a => a.kind !== "savings" && a.kind !== "card" && accBalance(a) !== null);
+    return banks.length ? `<div class="acctiles">${banks.map(a => { const b = accBalance(a); return `<div class="acctile"><div class="row" style="gap:6px"><span class="accdot" style="background:${/cimb/i.test(a.name) ? "#C8102E" : /maybank/i.test(a.name) ? "#F6C500" : "var(--peri)"}"></span><span class="small muted">${esc(a.name)}</span></div><div class="accbal ${b < 0 ? "neg" : ""}">${b < 0 ? "−" : ""}${rm(Math.abs(b))}</div></div>`; }).join("")}</div>` : ""; })()}
   ${savingsAccounts().map(a => `<button class="card between asbcard" data-savacc="${a.id}" style="margin-top:10px;width:100%;text-align:left"><div class="row">${window.ART.jar(40)}<div><div class="small muted">${esc(a.name)} savings</div><div class="h2">${rm(savingsBalance(a))}</div></div></div><span class="tiny muted">+ ${rm0(sum(monthTx(m).filter(t => t.type === "saving" && t.to_account_id === a.id)))} this month</span></button>`).join("")}
   ${owed.map(x => `<div class="card between" style="margin-top:10px"><div><div class="small muted">${esc(x.a.name)}</div><div class="h2">${rm(x.owed)} <span class="small muted" style="font-weight:400">owed</span></div></div><button class="btn" data-paycard="${x.a.id}">Pay card</button></div>`).join("")}
   ${bills.length ? `<div class="between"><div class="lbl">Bills due</div><button class="small" style="color:var(--peri)" data-mv="bills">See all</button></div>
