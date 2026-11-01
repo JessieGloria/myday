@@ -31,7 +31,7 @@ function viewLearn() {
   const pct = list.length ? done / list.length : 0;
   const carry = ws === thisWk ? S.topics.filter(t => !t.done_at && t.week_start < thisWk) : [];
   const running = timer && S.topics.find(t => t.id === timer.id);
-  return `<div class="top"><div><h1 class="h1">Learn</h1><div class="small muted serif" style="font-size:14px">a little every week</div></div><div class="row">${window.ART.book(62)}<button class="iconbtn" id="gear" aria-label="Settings">${I.gear}</button></div></div>
+  return `<div class="top"><div><h1 class="h1">Learn</h1><div class="small muted serif" style="font-size:14px">a little every week</div></div><div class="row">${window.ART.book(62)}</div></div>
   ${running ? `<div class="card status st-oncall" style="margin-bottom:12px"><div class="ic">${I.plan}</div><div class="grow" style="flex:1"><div class="h2">Studying ${esc(running.title)}</div><div class="small muted" id="tclock">started ${new Date(timer.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div></div><button class="btn sun" id="tstop">Stop</button></div>` : ""}
   <div class="card leave between">
     <div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">${ws === thisWk ? "THIS WEEK" : wkLabel(ws).toUpperCase()}</div>
