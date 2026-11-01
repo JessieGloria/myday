@@ -78,7 +78,7 @@ function txRow(t) {
 function monthHeader() {
   const [y, m] = S.moneyMonth.split("-").map(Number);
   return `<div class="top"><div><h1 class="h1">Money</h1><div class="small muted">${MONL[m - 1]} ${y}${S.moneyMonth === curMonth() ? " so far" : ""}</div></div>
-    <div class="row"><button class="iconbtn" id="mprev" aria-label="Previous month">${I.left}</button><button class="iconbtn" id="mnext" aria-label="Next month">${I.right}</button><button class="iconbtn" id="msetup" aria-label="Money setup">${I.gear}</button></div></div>
+    <div class="row"><button class="iconbtn" id="mprev" aria-label="Previous month">${I.left}</button><button class="iconbtn" id="mnext" aria-label="Next month">${I.right}</button><button class="iconbtn" id="msetup" aria-label="Categories">${I.gear}</button></div></div>
     <div class="seg" style="margin-top:4px">${[["overview", "Overview"], ["history", "History"], ["bills", "Bills"]].map(([k, l]) => `<button data-mv="${k}" class="${S.moneyView === k ? "on" : ""}">${l}</button>`).join("")}</div>`;
 }
 function viewMoney() {
@@ -99,9 +99,9 @@ function viewOverview() {
   return `
   ${review.length ? `<button class="card between" id="mreview" style="width:100%;text-align:left;background:var(--sunbg);border:none;margin-bottom:12px"><div><div class="h2" style="color:var(--sunink)">${review.length} to check</div><div class="small" style="color:var(--sunink)">Saved from your screenshots. Tap to confirm.</div></div><span style="color:var(--sunink)">${I.right.replace("<svg", '<svg width="20" height="20"')}</span></button>` : ""}
   <div class="card leave" style="padding:16px 18px">
-    <div class="lbl" style="margin:0 0 4px;color:var(--navytext)">${budget ? "LEFT TO SPEND" : "BALANCE THIS MONTH"}</div>
-    <div style="font-size:30px;font-weight:500;${left < 0 ? "color:#F3B7B7" : ""}">${left < 0 ? "−" : ""}${rm(Math.abs(left))}</div>
-    ${budget ? `<div class="tiny muted">of ${rm0(budget)} budget</div><div class="bar" style="background:#3E4480;margin-top:8px"><i style="width:${Math.min(100, tt.spent / budget * 100)}%;background:${tt.spent > budget ? "#F3B7B7" : "#F6D86B"}"></i></div>` : ""}
+    <div class="between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">${budget ? "LEFT TO SPEND" : "BALANCE THIS MONTH"}</div>
+    <div style="font-size:30px;font-weight:600;font-family:Nunito,Inter,sans-serif;${left < 0 ? "color:#F3B7B7" : ""}">${left < 0 ? "−" : ""}${rm(Math.abs(left))}</div></div>${window.ART.jar(58)}</div>
+    ${budget ? `<div class="tiny muted">of ${rm0(budget)} budget</div><div class="bar" style="background:#3E4480;margin-top:8px"><i class="ringless" style="width:${Math.min(100, tt.spent / budget * 100)}%;background:${tt.spent > budget ? "#F3B7B7" : "#F6D86B"}"></i></div>` : ""}
     <div class="between" style="margin-top:14px;font-size:11.5px">
       <div><div class="muted">Income</div><div style="font-size:15px;font-weight:600;color:#BFE3C9">${rm(tt.income)}</div></div>
       <div><div class="muted">Spent</div><div style="font-size:15px;font-weight:600;color:#F3B7B7">${rm(tt.spent)}</div></div>
@@ -198,8 +198,9 @@ function txSheet(t, preset = {}, opts = {}) {
         if (o.type === "expense" && o.payee && (o.category_id || o.account_id)) learn(o.payee, o.category_id, o.account_id);
         S.tx.sort((a, b) => b.date.localeCompare(a.date) || (b.time || "").localeCompare(a.time || ""));
         if (window.MD.refreshGoalTx && (o.goal_id || t.goal_id)) await window.MD.refreshGoalTx();
+        if (o.goal_id) { const g = (S.goals || []).find(k => k.id === o.goal_id); if (g && window.MD.goalSaved(g) >= g.target && window.MD.goalSaved(g) - amount < g.target) { setTimeout(() => { window.ART.confetti(null, 30); toast(`You reached ${g.name}!`); }, 350); } }
         closeSheet(); render();
-        if (opts.review) nextReview(); else toast(isNew ? "Saved" : "Changes saved");
+        if (opts.review) nextReview(); else if (!(o.goal_id)) toast(isNew ? "Saved" : "Changes saved");
       } catch (e) { fail(e); }
     };
     const del = $("#xdel"); if (del) del.onclick = async () => {
@@ -290,44 +291,24 @@ function budgetSheet() {
   });
 }
 function setupSheet() {
-  const url = `${CFG.url}/functions/v1/myday-capture`, token = S.settings.capture_token;
-  const listRow = (x, kind) => `<div class="item"><div class="grow"><input type="text" value="${esc(x.name)}" data-rn="${kind}:${x.id}" style="padding:7px 10px"></div>
-     ${kind === "a" ? `<select data-ak="${x.id}" style="width:96px;padding:7px 8px">${["bank", "card", "cash", "ewallet"].map(k => `<option ${x.kind === k ? "selected" : ""}>${k}</option>`).join("")}</select>` : `<select data-cc="${x.id}" style="width:96px;padding:7px 8px">${Object.keys(CCOL).map(k => `<option ${x.color === k ? "selected" : ""}>${k}</option>`).join("")}</select>`}
-     <button class="x" data-rd="${kind}:${x.id}" aria-label="Remove">×</button></div>`;
-  openSheet(`<h2 class="h2" style="margin-bottom:6px">Money setup</h2>
-    <div class="lbl">Screenshot to expense</div>
-    <div class="card"><p class="small" style="margin:0 0 10px">Your iPhone Shortcut needs these two things. Keep the code private, it lets the shortcut save into your app.</p>
-      <div class="field"><label>Web address</label><div class="row"><input type="text" readonly value="${url}" class="selectable" style="font-size:13px"><button class="btn" data-copy="${url}">Copy</button></div></div>
-      <div class="field" style="margin:0"><label>Your code</label><div class="row"><input type="text" readonly value="${token}" class="selectable" style="font-size:13px"><button class="btn" data-copy="${token}">Copy</button></div></div>
-      <details style="margin-top:12px"><summary class="small" style="color:var(--peri)">Test the reader with pasted text</summary>
-        <textarea id="ttx" rows="5" placeholder="Paste text from a receipt here" style="margin-top:8px;font-size:13px"></textarea>
-        <button class="btn block" id="trun" style="margin-top:8px">Send test</button><div class="small" id="tres" style="margin-top:8px"></div></details></div>
-    <div class="lbl">Accounts and cards</div><div class="list">${S.accounts.map(a => listRow(a, "a")).join("")}</div>
-    <button class="addline" id="adda">+ Add account</button>
-    <div class="field"><label>Default for new expenses</label>${chips(S.accounts.map(a => [a.id, a.name]), S.settings.default_account_id, "da")}</div>
-    <div class="lbl">Spending categories</div><div class="list">${expCats().map(c => listRow(c, "c")).join("")}</div>
-    <button class="addline" id="addc">+ Add category</button>
-    <div class="lbl">Income categories</div><div class="list">${incCats().map(c => listRow(c, "c")).join("")}</div>
+  const row = c => `<div class="item"><span style="width:10px;height:10px;border-radius:50%;flex:none;background:${CCOL[c.color]}"></span><div class="grow"><input type="text" value="${esc(c.name)}" data-rn="${c.id}" style="height:34px"></div>
+     <select data-cc="${c.id}" style="width:96px;height:34px;line-height:34px">${Object.keys(CCOL).map(k => `<option ${c.color === k ? "selected" : ""}>${k}</option>`).join("")}</select>
+     <button class="x" data-rd="${c.id}" aria-label="Remove">×</button></div>`;
+  openSheet(`<div class="row" style="margin-bottom:4px">${window.ART.jar(44)}<h2 class="h2">Categories</h2></div>
+    <p class="small muted" style="margin:0 2px">Rename, recolour, add or remove the categories you pick when adding money.</p>
+    <div class="lbl">Spending</div><div class="list">${expCats().map(row).join("")}</div>
+    <button class="addline" id="addc">+ Add spending category</button>
+    <div class="lbl">Income</div><div class="list">${incCats().map(row).join("")}</div>
     <button class="addline" id="addi">+ Add income category</button>`, sh => {
-    sh.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); toast("Copied"); } catch (e) { toast("Press and hold the box to copy"); } });
-    sh.querySelectorAll("[data-rn]").forEach(inp => inp.onchange = async () => { const [k, id] = inp.dataset.rn.split(":"), v = inp.value.trim(); if (!v) return;
-      try { if (k === "a") Object.assign(acc(id), await db.update("myday_accounts", id, { name: v })); else Object.assign(cat(id), await db.update("myday_categories", id, { name: v })); toast("Renamed"); } catch (e) { fail(e); } });
-    sh.querySelectorAll("[data-ak]").forEach(s => s.onchange = async () => { try { Object.assign(acc(s.dataset.ak), await db.update("myday_accounts", s.dataset.ak, { kind: s.value })); } catch (e) { fail(e); } });
-    sh.querySelectorAll("[data-cc]").forEach(s => s.onchange = async () => { try { Object.assign(cat(s.dataset.cc), await db.update("myday_categories", s.dataset.cc, { color: s.value })); } catch (e) { fail(e); } });
-    sh.querySelectorAll("[data-rd]").forEach(b => b.onclick = async () => { const [k, id] = b.dataset.rd.split(":"), t = k === "a" ? "myday_accounts" : "myday_categories";
-      try { await db.remove(t, id); if (k === "a") S.accounts = S.accounts.filter(x => x.id !== id); else S.categories = S.categories.filter(x => x.id !== id); setupSheet();
-        toast("Removed", async () => { const r = await db.restore(t, id); (k === "a" ? S.accounts : S.categories).push(r); setupSheet(); }); } catch (e) { fail(e); } });
-    sh.querySelectorAll("[data-da]").forEach(b => b.onclick = async () => { try { S.settings = (await rest("PATCH", `myday_settings?user_id=eq.${S.settings.user_id}`, { default_account_id: b.dataset.da }))[0]; sh.querySelectorAll("[data-da]").forEach(x => x.classList.toggle("on", x === b)); } catch (e) { fail(e); } });
-    const add = async (t, o) => { try { const r = await db.insert(t, o); (t === "myday_accounts" ? S.accounts : S.categories).push(r); setupSheet(); } catch (e) { fail(e); } };
-    $("#adda").onclick = () => add("myday_accounts", { name: "New account", kind: "bank", sort: S.accounts.length + 1 });
-    $("#addc").onclick = () => add("myday_categories", { name: "New category", kind: "expense", sort: 50 });
-    $("#addi").onclick = () => add("myday_categories", { name: "New income", kind: "income", sort: 50 });
-    $("#trun").onclick = async () => {
-      const text = $("#ttx").value; if (!text.trim()) { $("#tres").textContent = "Paste some text first."; return; }
-      $("#tres").textContent = "Sending…";
-      try { const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, text }) }).then(r => r.json());
-        $("#tres").textContent = r.message || JSON.stringify(r); if (r.result === "saved") { await loadMoney(); render(); } } catch (e) { $("#tres").textContent = "Couldn't reach the reader. Check your internet and try again."; }
-    };
+    sh.querySelectorAll("[data-rn]").forEach(inp => inp.onchange = async () => { const id = inp.dataset.rn, v = inp.value.trim(); if (!v) return;
+      try { Object.assign(cat(id), await db.update("myday_categories", id, { name: v })); toast("Renamed"); } catch (e) { fail(e); } });
+    sh.querySelectorAll("[data-cc]").forEach(x => x.onchange = async () => { try { Object.assign(cat(x.dataset.cc), await db.update("myday_categories", x.dataset.cc, { color: x.value })); setupSheet(); } catch (e) { fail(e); } });
+    sh.querySelectorAll("[data-rd]").forEach(b => b.onclick = async () => { const id = b.dataset.rd;
+      try { await db.remove("myday_categories", id); S.categories = S.categories.filter(x => x.id !== id); setupSheet();
+        toast("Removed", async () => { S.categories.push(await db.restore("myday_categories", id)); setupSheet(); }); } catch (e) { fail(e); } });
+    const add = async o => { try { S.categories.push(await db.insert("myday_categories", o)); setupSheet(); } catch (e) { fail(e); } };
+    $("#addc").onclick = () => add({ name: "New category", kind: "expense", sort: 50 });
+    $("#addi").onclick = () => add({ name: "New income", kind: "income", sort: 50 });
   });
 }
 

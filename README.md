@@ -16,6 +16,6 @@ Sign in with your OMFS Desk email and password.
 
 ## Files
 
-- `index.html`, `styles.css`, `app.js`, `money.js`, `goals.js`, `learn.js`, `recap.js`: the app
+- `index.html`, `styles.css`, `art.js`, `app.js`, `money.js`, `goals.js`, `learn.js`, `recap.js`: the app
 - `config.js`: your Supabase connection
 - `manifest.json`, `sw.js`, `icons/`: home screen install

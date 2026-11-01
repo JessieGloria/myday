@@ -81,7 +81,7 @@ const db = {
   remove: (t, id) => rest("PATCH", `${t}?id=eq.${id}`, { deleted_at: nowIso() }).then(r => r[0]),
   restore: (t, id) => rest("PATCH", `${t}?id=eq.${id}`, { deleted_at: null }).then(r => r[0])
 };
-function signOut() { saveSession(null); S.loaded = false; render(); }
+function signOut() { saveSession(null); S.loaded = false; lastTab = null; render(); }
 
 /* ---------- state ---------- */
 const S = {
@@ -172,10 +172,13 @@ function render() {
     return;
   }
   const view = (window.MD.views[S.tab] || { today: viewToday, calendar: viewCalendar, money: () => viewSoon("Money", "Income, spending, savings, budgets, recurring bills, and screenshot-to-expense.", "Step 2"), goals: () => viewSoon("Goals", "Savings goals, wishlist, and life admin reminders.", "Step 3"), learn: () => viewSoon("Learn", "Your topics of the week, notes, and weekly streak.", "Step 3") }[S.tab])();
-  app.innerHTML = `<div class="wrap">${view}</div>${nav()}<button class="fab" id="fab" aria-label="Quick add">${I.plus}</button>`;
+  const enter = S.tab !== lastTab; lastTab = S.tab;
+  app.innerHTML = `<div class="wrap${enter ? " enter" : ""}">${view}</div>${nav()}<button class="fab" id="fab" aria-label="Quick add">${I.plus}</button>`;
   bindCommon();
   (window.MD.binds[S.tab] || { today: bindToday, calendar: bindCalendar }[S.tab])?.();
+  window.ART.afterRender();
 }
+let lastTab = null;
 
 function nav() {
   const tabs = [["today", "Today", I.home], ["calendar", "Calendar", I.cal], ["money", "Money", I.wallet], ["goals", "Goals", I.target], ["learn", "Learn", I.book]];
@@ -213,13 +216,13 @@ function viewToday() {
   const post = info.prevOncall && info.kind !== "oncall" ? `<div class="small muted" style="margin:8px 2px 0">On-call from yesterday ends at 8am.</div>` : "";
   return `
   <div class="top"><div><div class="muted">${greeting()}</div><h1 class="h1">Hi ${esc(name)} <span style="color:#F2C94C">☀</span></h1><div class="small muted">${fmtLong(t)}</div></div>
-    <div class="row"><svg width="54" height="54" viewBox="0 0 56 56" aria-hidden="true"><circle cx="40" cy="16" r="12" fill="#F6D86B"/><path d="M24 52 C14 40 12 28 20 16 C28 28 30 40 24 52Z" fill="#7FA38A"/><path d="M26 52 C34 38 42 32 52 32 C46 44 36 50 26 52Z" fill="#9CBBA4"/></svg>
+    <div class="row">${window.ART.sunPlant(70)}
     <button class="iconbtn" id="gear" aria-label="Settings">${I.gear}</button></div></div>
   <div class="card status st-${lab.cls}"><div class="ic">${lab.icon}</div><div><div class="h2">${esc(lab.title)}</div><div class="small muted">${esc(lab.sub)}</div></div></div>${post}
   <div class="stats">
-    <button class="stat" data-go="todo"><b>${todoLeft}</b><span class="tiny muted">to do today</span></button>
-    <button class="stat" data-go="money"><b>RM${Math.round(window.MD.moneyToday ? window.MD.moneyToday() : 0)}</b><span class="tiny muted">spent today</span></button>
-    <button class="stat" data-go="cal"><b>${lv.left}</b><span class="tiny muted">leave days left</span></button>
+    <button class="stat" data-go="todo"><span class="si" style="background:var(--lav);color:var(--peri)">${I.todo}</span><b>${todoLeft}</b><span class="tiny muted">to do today</span></button>
+    <button class="stat" data-go="money"><span class="si" style="background:var(--sunbg);color:#C99A1E">${I.coin}</span><b>RM${Math.round(window.MD.moneyToday ? window.MD.moneyToday() : 0)}</b><span class="tiny muted">spent today</span></button>
+    <button class="stat" data-go="cal"><span class="si" style="background:var(--sagebg);color:var(--sage)">${I.leaf.replace(' width="20" height="20"', "")}</span><b>${lv.left}</b><span class="tiny muted">leave days left</span></button>
   </div>
   ${dueSoon()}
   <div class="seg">${[["plan", "Plan"], ["todo", "To do"], ["buy", "To buy"]].map(([k, l]) => `<button data-tv="${k}" class="${S.todayView === k ? "on" : ""}">${l}</button>`).join("")}</div>
@@ -240,7 +243,7 @@ function bindToday() {
   document.querySelectorAll("[data-dsrem]").forEach(b => b.onclick = () => window.MD.remSheet(S.reminders.find(r => r.id === b.dataset.dsrem)));
   document.querySelectorAll("[data-dsbill]").forEach(b => b.onclick = () => { S.tab = "money"; S.moneyView = "bills"; S.moneyMonth = today().slice(0, 7); render(); window.scrollTo(0, 0); });
   const rc = $("#recapcard"); if (rc) rc.onclick = () => window.MD.recapSheet();
-  document.querySelectorAll("[data-tv]").forEach(b => b.onclick = () => { S.todayView = b.dataset.tv; try { localStorage.setItem("myday.todayView", S.todayView); } catch (e) {} render(); });
+  document.querySelectorAll("[data-tv]").forEach(b => b.onclick = () => { S.todayView = b.dataset.tv; lastTab = null; try { localStorage.setItem("myday.todayView", S.todayView); } catch (e) {} render(); });
   document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { const g = b.dataset.go; if (g === "cal") { S.tab = "calendar"; } else if (g === "money") { S.tab = "money"; } else { S.todayView = g; } render(); });
   ({ plan: bindPlan, todo: bindTodo, buy: bindBuy })[S.todayView]();
 }
@@ -330,12 +333,12 @@ function viewTodo() {
 }
 function bindTodo() {
   $("#tadd").onsubmit = async e => {
-    e.preventDefault(); const v = $("#tin").value.trim(); if (!v) return;
+    e.preventDefault(); const v = $("#tin").value.trim(); if (!v) { window.ART.nudge($("#tin"), "Type a to-do first"); return; }
     try { S.todos.push(await db.insert("myday_todos", { title: v, due_date: today() })); render(); $("#tin").focus(); } catch (er) { fail(er); }
   };
   document.querySelectorAll("[data-tchk]").forEach(b => b.onclick = async () => {
     const x = S.todos.find(y => y.id === b.dataset.tchk);
-    try { Object.assign(x, await db.update("myday_todos", x.id, { done_at: x.done_at ? null : nowIso() })); render(); } catch (e) { fail(e); }
+    try { Object.assign(x, await db.update("myday_todos", x.id, { done_at: x.done_at ? null : nowIso() })); if (x.done_at) window.ART.celebrate(`[data-tchk="${x.id}"]`, true); render(); } catch (e) { fail(e); }
   });
   document.querySelectorAll("[data-tdel]").forEach(b => b.onclick = async () => {
     const id = b.dataset.tdel;
@@ -385,7 +388,7 @@ function bindBuy() {
   document.querySelectorAll("[data-bg]").forEach(b => b.onclick = () => { buyGroup = b.dataset.bg; document.querySelectorAll("[data-bg]").forEach(x => x.classList.toggle("on", x === b)); });
   $("#newg").onclick = () => { const g = prompt("New group name"); if (g && g.trim()) { buyGroup = g.trim(); GROUPS.includes(buyGroup) || GROUPS.push(buyGroup); render(); } };
   $("#badd").onsubmit = async e => {
-    e.preventDefault(); const v = $("#bin").value.trim(); if (!v) return;
+    e.preventDefault(); const v = $("#bin").value.trim(); if (!v) { window.ART.nudge($("#bin"), "Type an item first"); return; }
     try { S.shopping.push(await db.insert("myday_shopping", { title: v, group_name: buyGroup })); render(); $("#bin").focus(); } catch (er) { fail(er); }
   };
   document.querySelectorAll("[data-bchk]").forEach(b => b.onclick = async () => {
@@ -443,13 +446,13 @@ function viewCalendar() {
   }
   return `<div class="top"><div><h1 class="h1">${MONL[m - 1]} <span class="muted" style="font-weight:300">${y}</span></h1><div class="small muted">Your shifts and plans</div></div>
     <div class="row"><button class="iconbtn" id="cprev" aria-label="Previous month">${I.left}</button><button class="iconbtn" id="cnext" aria-label="Next month">${I.right}</button></div></div>
-    ${S.paint ? paint : `<button class="btn block" id="proster" style="margin-bottom:10px">Edit roster: on-call, leave, off days</button>`}
+    ${S.paint ? paint : `<button class="btn block" id="proster" style="margin-bottom:10px;height:auto;padding:6px 14px;display:flex;align-items:center;gap:8px;justify-content:center">${window.ART.moon(34)}<span>Edit roster: on-call, leave, off days</span></button>`}
     <div class="cal" style="margin-top:10px"><div class="wd">${["M", "T", "W", "T", "F", "S", "S"].map(x => `<div>${x}</div>`).join("")}</div><div class="grid">${cells}</div>
     <div class="legend"><span><i style="background:var(--peri)"></i>Work</span><span><i style="background:var(--navy)"></i>On-call</span><span><i style="background:var(--sun)"></i>Off / holiday</span><span><i style="background:var(--sage)"></i>Leave</span><span><i style="background:var(--rose)"></i>Plan</span></div></div>
     <div class="card leave between" style="margin-top:12px"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">ANNUAL LEAVE ${lv.cy}</div>
       <div style="font-size:26px;font-weight:500">${lv.left} <span style="font-size:14px;font-weight:400">days left</span></div>
       <div class="small muted">${lv.taken} taken${lv.booked ? ` · ${lv.booked} booked ahead` : ""} · ${lv.next} available in ${lv.cy + 1}</div></div>
-      <svg class="ring" width="58" height="58" aria-hidden="true"><circle cx="29" cy="29" r="23" fill="none" stroke="#3E4480" stroke-width="7"/><circle cx="29" cy="29" r="23" fill="none" stroke="#F6D86B" stroke-width="7" stroke-linecap="round" stroke-dasharray="${Math.max(0, Math.min(1, lv.left / Math.max(1, Number(S.settings.leave_entitlement)))) * 144.5} 145" transform="rotate(-90 29 29)"/></svg></div>
+      <svg class="ring" width="58" height="58" aria-hidden="true"><circle cx="29" cy="29" r="23" fill="none" stroke="#3E4480" stroke-width="7"/><circle class="ringfill" cx="29" cy="29" r="23" fill="none" stroke="#F6D86B" stroke-width="7" stroke-linecap="round" stroke-dasharray="${Math.max(0, Math.min(1, lv.left / Math.max(1, Number(S.settings.leave_entitlement)))) * 144.5} 145" transform="rotate(-90 29 29)"/></svg></div>
     <div class="lbl">Coming up</div>
     ${up.length ? `<div class="list">${up.map(([ds, title, cls, sub]) => `<button class="item" style="width:100%;text-align:left" data-day="${ds}"><div class="grow"><b style="font-weight:600">${esc(relDay(ds))}</b> · ${esc(title)}</div><span class="pill ${cls}">${esc(sub || "")}</span></button>`).join("")}</div>` : '<div class="empty">Nothing special in the next 30 days.</div>'}`;
 }
@@ -523,44 +526,34 @@ function quickAdd() {
 
 /* ---------- settings ---------- */
 function settingsSheet() {
-  const st = S.settings, cy = new Date().getFullYear();
-  const hol = S.holidayRows.filter(h => h.date.startsWith(String(cy)) || h.date.startsWith(String(cy + 1)));
-  openSheet(`<h2 class="h2" style="margin-bottom:14px">Settings</h2>
-    <div class="field"><label>Your name</label><input type="text" id="sn" value="${esc(st.display_name || "")}"></div>
-    <div class="two"><div class="field"><label>Work starts</label><input type="time" id="sws" value="${hhmm(st.work_start)}"></div><div class="field"><label>Work ends</label><input type="time" id="swe" value="${hhmm(st.work_end)}"></div></div>
-    <div class="field"><label>Work days</label><div class="paint" style="margin:0">${[1, 2, 3, 4, 5, 6, 0].map(d => `<button data-wd="${d}" class="${st.work_days.includes(d) ? "on" : ""}">${WD[d]}</button>`).join("")}</div></div>
-    <div class="lbl">Annual leave</div>
-    <div class="two"><div class="field"><label>Days per year</label><input type="number" id="sle" value="${st.leave_entitlement}"></div><div class="field"><label>Days left on start date</label><input type="number" id="slb" value="${st.leave_opening_balance}"></div></div>
+  const st = S.settings, lv = leaveSummary();
+  openSheet(`<h2 class="h2" style="margin-bottom:6px">Annual leave</h2>
+    <div class="card leave between" style="margin:8px 0 4px"><div><div style="font-size:22px;font-weight:600">${lv.left} days left</div><div class="small muted">${lv.taken} taken${lv.booked ? ` · ${lv.booked} booked` : ""} · ${lv.next} available in ${lv.cy + 1}</div></div>${window.ART.moon(46)}</div>
+    <div class="lbl">Book leave</div>
+    <div class="field"><label>From</label><input type="date" id="lf" value="${today()}"></div>
+    <div class="field"><label>To</label><input type="date" id="lt" value="${today()}"></div>
+    <p class="tiny muted" style="margin:-4px 2px 10px" id="lcount"></p>
+    <button class="btn primary block" id="lbook">Book leave</button>
+    <div class="lbl">Leave allowance</div>
+    <div class="field"><label>Days per year</label><input type="number" id="sle" value="${st.leave_entitlement}"></div>
+    <div class="field"><label>Days left on start date</label><input type="number" id="slb" value="${st.leave_opening_balance}"></div>
     <div class="field"><label>Start date for counting</label><input type="date" id="sld" value="${st.leave_opening_date}"></div>
-    <p class="tiny muted" style="margin:-4px 2px 10px">Unused leave carries over with no limit. Leave marked on a work day uses 1 day.</p>
-    <button class="btn primary block" id="ssave">Save settings</button>
-    <div class="lbl">Sabah public holidays</div>
-    <div class="list">${hol.map(h => `<div class="item"><div class="grow"><div class="title">${esc(h.name)}</div><div class="tiny muted">${fmtShort(h.date)} ${h.date.slice(0, 4)}</div></div><button class="x" data-hdel="${h.id}" aria-label="Remove">×</button></div>`).join("")}</div>
-    <div class="two" style="margin-top:10px"><input type="date" id="hd"><input type="text" id="hn" placeholder="Holiday name"></div>
-    <button class="btn block" id="hadd" style="margin-top:8px">+ Add holiday</button>
-    <p class="tiny muted" style="margin:8px 2px">Holiday dates can shift (Hari Raya, replacement days). Fix any date here.</p>
-    <div class="lbl">Recap and backup</div>
-    <button class="btn block" id="srecap" style="margin-bottom:8px">Monthly recap</button>
-    <button class="btn block" id="sexcsv" style="margin-bottom:8px">Download money as spreadsheet (CSV)</button>
-    <button class="btn block" id="sexall">Download full backup</button>
+    <p class="tiny muted" style="margin:-4px 2px 10px">Unused leave carries over with no limit. Only work days count as leave.</p>
+    <button class="btn block" id="ssave">Save allowance</button>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>`, sh => {
-    let wd = [...st.work_days];
-    sh.querySelectorAll("[data-wd]").forEach(b => b.onclick = () => { const d = Number(b.dataset.wd); wd = wd.includes(d) ? wd.filter(x => x !== d) : [...wd, d]; b.classList.toggle("on"); });
+    const workDays = () => { const f = $("#lf").value, t = $("#lt").value, out = []; if (!f || !t || t < f) return out;
+      for (let d = f; d <= t; d = addDays(d, 1)) { if (baseKind(d) === "work") out.push(d); if (out.length > 60) break; } return out; };
+    const upd = () => { const n = workDays().length; $("#lcount").textContent = n ? `${n} work day${n > 1 ? "s" : ""} will be marked as leave. Weekends and public holidays don't count.` : "No work days in these dates."; };
+    $("#lf").onchange = () => { if ($("#lt").value < $("#lf").value) $("#lt").value = $("#lf").value; upd(); }; $("#lt").onchange = upd; upd();
+    $("#lbook").onclick = async () => {
+      const days = workDays(); if (!days.length) { window.ART.nudge($("#lt")); return; }
+      try { for (const d of days) await setDayKind(d, "leave"); closeSheet(); render(); toast(`${days.length} leave day${days.length > 1 ? "s" : ""} booked`); window.ART.confetti(null); } catch (e) { fail(e); }
+    };
     $("#ssave").onclick = async () => {
-      try { S.settings = (await rest("PATCH", `myday_settings?user_id=eq.${st.user_id}`, { display_name: $("#sn").value.trim(), work_start: $("#sws").value, work_end: $("#swe").value, work_days: wd.sort(), leave_entitlement: Number($("#sle").value), leave_opening_balance: Number($("#slb").value), leave_opening_date: $("#sld").value, leave_opening_year: Number($("#sld").value.slice(0, 4)), updated_at: nowIso() }))[0];
-        closeSheet(); render(); toast("Settings saved"); } catch (e) { fail(e); }
+      try { S.settings = (await rest("PATCH", `myday_settings?user_id=eq.${st.user_id}`, { leave_entitlement: Number($("#sle").value), leave_opening_balance: Number($("#slb").value), leave_opening_date: $("#sld").value, leave_opening_year: Number($("#sld").value.slice(0, 4)), updated_at: nowIso() }))[0];
+        closeSheet(); render(); toast("Allowance saved"); } catch (e) { fail(e); }
     };
-    sh.querySelectorAll("[data-hdel]").forEach(b => b.onclick = async () => {
-      try { const h = S.holidayRows.find(x => x.id === b.dataset.hdel); await db.remove("myday_holidays", h.id); S.holidayRows = S.holidayRows.filter(x => x !== h); delete S.holidays[h.date]; settingsSheet(); render(); } catch (e) { fail(e); }
-    });
-    $("#hadd").onclick = async () => {
-      const d = $("#hd").value, n = $("#hn").value.trim(); if (!d || !n) { toast("Add a date and a name"); return; }
-      try { const h = await db.insert("myday_holidays", { date: d, name: n }); S.holidayRows.push(h); S.holidayRows.sort((a, b) => a.date.localeCompare(b.date)); S.holidays[d] = h; settingsSheet(); render(); } catch (e) { fail(e); }
-    };
-    $("#srecap").onclick = () => window.MD.recapSheet();
-    $("#sexcsv").onclick = () => window.MD.exportMoneyCsv();
-    $("#sexall").onclick = () => window.MD.exportAll();
     $("#sout").onclick = () => { closeSheet(); signOut(); };
   });
 }
@@ -574,6 +567,6 @@ document.addEventListener("touchmove", e => { if (e.touches && e.touches.length 
 let lastDay = today();
 document.addEventListener("visibilitychange", () => { if (!document.hidden && session && S.loaded) { if (today() !== lastDay) { lastDay = today(); S.planDate = lastDay; } loadAll().then(render).catch(() => {}); } });
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
-window.MD = Object.assign(window.MD, { dayInfo, $, esc, pad, ymd, parse, addDays, today, fmtShort, relDay, nowIso, I, S, db, rest, render, openSheet, closeSheet, toast, fail, CFG });
+window.MD = Object.assign(window.MD, { dayInfo, setDayKind, leaveSummary, $, esc, pad, ymd, parse, addDays, today, fmtShort, relDay, nowIso, I, S, db, rest, render, openSheet, closeSheet, toast, fail, CFG });
 window.addEventListener("DOMContentLoaded", render);
 })();

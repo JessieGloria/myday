@@ -31,13 +31,13 @@ function viewLearn() {
   const pct = list.length ? done / list.length : 0;
   const carry = ws === thisWk ? S.topics.filter(t => !t.done_at && t.week_start < thisWk) : [];
   const running = timer && S.topics.find(t => t.id === timer.id);
-  return `<div class="top"><div><h1 class="h1">Learn</h1><div class="small muted serif" style="font-size:14px">a little every week</div></div><button class="iconbtn" id="gear" aria-label="Settings">${I.gear}</button></div>
+  return `<div class="top"><div><h1 class="h1">Learn</h1><div class="small muted serif" style="font-size:14px">a little every week</div></div><div class="row">${window.ART.book(62)}<button class="iconbtn" id="gear" aria-label="Settings">${I.gear}</button></div></div>
   ${running ? `<div class="card status st-oncall" style="margin-bottom:12px"><div class="ic">${I.plan}</div><div class="grow" style="flex:1"><div class="h2">Studying ${esc(running.title)}</div><div class="small muted" id="tclock">started ${new Date(timer.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div></div><button class="btn sun" id="tstop">Stop</button></div>` : ""}
   <div class="card leave between">
     <div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">${ws === thisWk ? "THIS WEEK" : wkLabel(ws).toUpperCase()}</div>
       <div style="font-size:24px;font-weight:500">${done} of ${list.length} <span style="font-size:14px;font-weight:400">topics</span></div>
       <div class="small muted">${mins ? hm(mins) + " studied · " : ""}${streak()} week streak · ${allDone} learned in total</div></div>
-    <svg width="58" height="58" aria-hidden="true"><circle cx="29" cy="29" r="23" fill="none" stroke="#3E4480" stroke-width="7"/><circle cx="29" cy="29" r="23" fill="none" stroke="#F6D86B" stroke-width="7" stroke-linecap="round" stroke-dasharray="${pct * 144.5} 145" transform="rotate(-90 29 29)"/></svg></div>
+    <svg width="58" height="58" aria-hidden="true"><circle cx="29" cy="29" r="23" fill="none" stroke="#3E4480" stroke-width="7"/><circle class="ringfill" cx="29" cy="29" r="23" fill="none" stroke="#F6D86B" stroke-width="7" stroke-linecap="round" stroke-dasharray="${pct * 144.5} 145" transform="rotate(-90 29 29)"/></svg></div>
   <div class="between" style="margin:14px 0 6px"><button class="iconbtn" id="lprev" aria-label="Previous week">${I.left}</button><div class="h2" style="font-size:14px">${ws === thisWk ? "This week" : ws === addDays(thisWk, 7) ? "Next week" : ws === addDays(thisWk, -7) ? "Last week" : ""} <span class="muted" style="font-weight:400">${wkLabel(ws)}</span></div><button class="iconbtn" id="lnext" aria-label="Next week">${I.right}</button></div>
   <form class="addbar" id="ladd"><input type="text" id="lin" placeholder="Add a topic for this week" autocomplete="off"><button class="btn sun" type="submit">Add</button></form>
   ${list.length ? `<div class="list">${list.map(t => `<div class="item ${t.done_at ? "done" : ""}"><button class="chk" data-lchk="${t.id}" aria-label="Done">${t.done_at ? I.check : ""}</button>
@@ -56,10 +56,10 @@ let clockT;
 function bindLearn() {
   const mv = n => { S.learnWeek = addDays(S.learnWeek, 7 * n); render(); };
   $("#lprev").onclick = () => mv(-1); $("#lnext").onclick = () => mv(1);
-  $("#ladd").onsubmit = async e => { e.preventDefault(); const v = $("#lin").value.trim(); if (!v) return;
+  $("#ladd").onsubmit = async e => { e.preventDefault(); const v = $("#lin").value.trim(); if (!v) { window.ART.nudge($("#lin"), "Type a topic, then tap Add"); return; }
     try { S.topics.push(await db.insert("myday_topics", { title: v, week_start: S.learnWeek })); render(); $("#lin").focus(); } catch (er) { fail(er); } };
   document.querySelectorAll("[data-lchk]").forEach(b => b.onclick = async () => { const t = S.topics.find(x => x.id === b.dataset.lchk);
-    try { if (!t.done_at && getTimer()?.id === t.id) await stopTimer(); Object.assign(t, await db.update("myday_topics", t.id, { done_at: t.done_at ? null : nowIso() })); render(); if (t.done_at) toast("Nice, one more learned"); } catch (e) { fail(e); } });
+    try { if (!t.done_at && getTimer()?.id === t.id) await stopTimer(); Object.assign(t, await db.update("myday_topics", t.id, { done_at: t.done_at ? null : nowIso() })); if (t.done_at) window.ART.celebrate(`[data-lchk="${t.id}"]`, true); render(); if (t.done_at) toast("Nice, one more learned"); } catch (e) { fail(e); } });
   document.querySelectorAll("[data-topic]").forEach(b => b.onclick = () => topicSheet(S.topics.find(x => x.id === b.dataset.topic)));
   document.querySelectorAll("[data-lstart]").forEach(b => b.onclick = async () => { if (getTimer()) await stopTimer(); setTimer({ id: b.dataset.lstart, start: Date.now() }); render(); });
   document.querySelectorAll("[data-lmove]").forEach(b => b.onclick = async () => { const t = S.topics.find(x => x.id === b.dataset.lmove);

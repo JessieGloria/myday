@@ -35,7 +35,7 @@ window.MD.refreshGoalTx = async () => { S.goalTx = await db.list("myday_transact
 
 /* ---------- views ---------- */
 function viewGoals() {
-  return `<div class="top"><div><h1 class="h1">Goals</h1><div class="small muted serif" style="font-size:14px">little by little, it adds up</div></div><button class="iconbtn" id="gear" aria-label="Settings">${I.gear}</button></div>
+  return `<div class="top"><div><h1 class="h1">Goals</h1><div class="small muted serif" style="font-size:14px">little by little, it adds up</div></div><div class="row">${window.ART.flag(62)}<button class="iconbtn" id="gear" aria-label="Settings">${I.gear}</button></div></div>
   <div class="seg">${[["goals", "Savings"], ["wish", "Wishlist"], ["admin", "Life admin"]].map(([k, l]) => `<button data-gv="${k}" class="${S.goalsView === k ? "on" : ""}">${l}</button>`).join("")}</div>
   ${{ goals: viewSavings, wish: viewWish, admin: viewAdmin }[S.goalsView]()}`;
 }
@@ -49,7 +49,7 @@ function goalCard(g) {
   const done = saved >= g.target;
   return `<div class="card" style="${done ? "background:var(--sagebg);border:none" : ""}">
     <button data-goal="${g.id}" style="width:100%;text-align:left">
-      <div class="between"><span class="h2" style="font-size:15px">${esc(g.name)}</span><span class="h2" style="font-size:15px">${Math.floor(pct)}%</span></div>
+      <div class="between"><span class="h2" style="font-size:15px">${done ? window.ART.star(18).replace("<svg", '<svg style="vertical-align:-3px;margin-right:4px"') : ""}${esc(g.name)}</span><span class="h2" style="font-size:15px">${Math.floor(pct)}%</span></div>
       <div class="bar"><i style="width:${pct}%;background:${CCOL[g.color] || "var(--peri)"}"></i></div>
       <div class="tiny muted" style="margin-top:6px">${rm(saved)} of ${rm0(g.target)}${done ? " · reached" : pace}</div></button>
     ${done ? "" : `<button class="btn" data-addsave="${g.id}" style="margin-top:10px;height:34px;font-size:13px">+ Add savings</button>`}</div>`;
@@ -91,7 +91,7 @@ function bindGoals() {
   document.querySelectorAll("[data-goal]").forEach(b => b.onclick = () => goalSheet(S.goals.find(g => g.id === b.dataset.goal)));
   document.querySelectorAll("[data-addsave]").forEach(b => b.onclick = () => window.MD.txSheet(null, { type: "saving", goal_id: b.dataset.addsave, note: S.goals.find(g => g.id === b.dataset.addsave)?.name }));
   const ag = $("#addgoal"); if (ag) ag.onclick = () => goalSheet(null);
-  const wf = $("#wadd"); if (wf) wf.onsubmit = async e => { e.preventDefault(); const v = $("#win").value.trim(); if (!v) return;
+  const wf = $("#wadd"); if (wf) wf.onsubmit = async e => { e.preventDefault(); const v = $("#win").value.trim(); if (!v) { window.ART.nudge($("#win"), "Type something first"); return; }
     try { S.wish.push(await db.insert("myday_wishlist", { name: v })); render(); $("#win").focus(); } catch (er) { fail(er); } };
   document.querySelectorAll("[data-wish]").forEach(b => b.onclick = () => wishSheet(S.wish.find(w => w.id === b.dataset.wish)));
   document.querySelectorAll("[data-saveforit]").forEach(b => b.onclick = () => saveForIt(S.wish.find(w => w.id === b.dataset.saveforit)));
