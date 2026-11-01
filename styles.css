@@ -409,3 +409,23 @@ body{background:transparent!important}
 .scene .ground{height:190px;opacity:1}
 .wrap{padding-bottom:calc(150px + var(--safe-b))}
 @media (prefers-color-scheme: dark){.scene.on{opacity:.38}.scene .ground{opacity:.8}}
+
+/* ===== hour-by-hour planner ===== */
+.typeday{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--card);border:1.5px dashed var(--lav2);border-radius:16px;padding:11px 14px;margin-bottom:12px;color:var(--peri)}
+.typeday b{color:var(--ink);font-weight:600}
+.anyt{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.hours{background:color-mix(in srgb,var(--card) 88%,transparent);border:1px solid var(--line);border-radius:20px;padding:4px 10px 4px 0;overflow:hidden}
+.hr{display:flex;min-height:44px;border-top:1px solid var(--line);position:relative}
+.hr:first-child{border-top:none}
+.hl{width:52px;flex:none;font-size:10.5px;color:var(--ink2);text-align:right;padding:6px 8px 0 0}
+.hc{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;padding:5px 0}
+.hr.band-work{background:linear-gradient(90deg,transparent 52px,color-mix(in srgb,var(--lav) 55%,transparent) 52px)}
+.hr.band-oncall{background:linear-gradient(90deg,transparent 52px,color-mix(in srgb,var(--navy) 10%,transparent) 52px)}
+.hr.band-work::before,.hr.band-oncall::before{content:"";position:absolute;left:52px;top:0;bottom:0;width:3px;background:var(--peri);opacity:.5}
+.hr.band-oncall::before{background:var(--navy)}
+.bandtag{align-self:flex-start;font-size:10.5px;font-weight:600;color:var(--ink2);background:var(--card);border-radius:10px;padding:2px 8px;margin-left:8px}
+.hc .blk{margin-left:8px;width:calc(100% - 8px);padding:7px 11px;border-radius:12px}
+.slot{flex:1;min-height:32px;margin-left:8px;border-radius:10px;display:flex;align-items:center;justify-content:flex-end;padding-right:10px;color:transparent;transition:background .2s,color .2s}
+.slot:active,.slot:hover{background:var(--lav);color:var(--peri)}
+.slot span{font-size:17px;font-weight:600}
+@media (hover:none){.slot span{color:var(--lav2)}}

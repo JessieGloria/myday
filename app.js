@@ -333,6 +333,47 @@ function bindToday() {
 }
 
 /* ----- Plan ----- */
+/* ----- type-your-day parser: "7-8:30 Morning routine", "3pm Groceries", "9-10:30pm Evening" ----- */
+function parsePlanText(text) {
+  const out = [];
+  const tm = "(\\d{1,2})(?:[:.](\\d{2}))?\\s*(am|pm|a\\.m\\.|p\\.m\\.)?";
+  const re = new RegExp("^\\s*" + tm + "(?:\\s*(?:-|–|—|to)\\s*" + tm + ")?\\s*[-–:·.]?\\s+(.+)$", "i");
+  const norm = (h, m, ap) => { h = Number(h); m = Number(m || 0); ap = (ap || "").toLowerCase().replace(/\./g, "");
+    if (ap === "pm" && h < 12) h += 12; if (ap === "am" && h === 12) h = 0; return [h, m, !!ap]; };
+  String(text || "").split(/\n/).map(l => l.trim()).filter(Boolean).forEach(line => {
+    const m = line.match(re);
+    if (!m || Number(m[1]) > 24 || (m[2] && Number(m[2]) > 59)) { out.push({ title: line, start: null, end: null }); return; }
+    let [sh, sm, sAp] = norm(m[1], m[2], m[3]), end = null;
+    if (m[4]) {
+      let [eh, em, eAp] = norm(m[4], m[5], m[6]);
+      if (!sAp && eAp && eh >= 12 && sh + 12 <= eh && sh < 12) sh += 12;       // "9-10:30pm" → 9pm
+      if (!sAp && !eAp) { if (sh >= 1 && sh <= 6) sh += 12; if (eh < sh) eh += 12; } // "12-1", "3-4"
+      if (!eAp && eh < sh && eh + 12 <= 24) eh += 12;
+      end = `${pad(eh % 24)}:${pad(em)}`;
+    } else if (!sAp && sh >= 1 && sh <= 6) sh += 12;                             // "3 Groceries" → 3pm
+    out.push({ title: m[7].trim(), start: `${pad(sh % 24)}:${pad(sm)}`, end });
+  });
+  return out;
+}
+function typeDaySheet(date) {
+  const ex = S.plans.filter(p => p.date === date).length;
+  openSheet(`<h2 class="h2">Type your day</h2><div class="small muted" style="margin:2px 0 14px">${fmtLong(date)}${ex ? ` · ${ex} already planned` : ""}</div>
+    <div class="field"><label>One plan per line, time first</label><textarea id="tdx" rows="9" style="font-size:14px;line-height:1.7" placeholder="7-8:30 Morning routine&#10;12-1 Lunch&#10;3pm Groceries&#10;9-10:30pm Evening routine&#10;Call Dad"></textarea></div>
+    <p class="tiny muted" style="margin:-4px 2px 12px">Times like 7, 7:30, 7am, 3pm, 9-10:30pm or 14:00 all work. 1 to 6 without am/pm means afternoon. A line with no time goes under "Anytime".</p>
+    <div id="tdprev"></div>
+    <button class="btn primary block" id="tdsave">Add to my day</button>`, () => {
+    const inp = $("#tdx"), prev = $("#tdprev");
+    const show = () => { const items = parsePlanText(inp.value);
+      prev.innerHTML = items.length ? `<div class="lbl">Preview · ${items.length}</div><div class="list" style="margin-bottom:14px">${items.map(x => `<div class="item"><span class="small" style="width:92px;flex:none;color:var(--peri);font-weight:600">${x.start ? t12(x.start) + (x.end ? "–" + t12(x.end) : "") : "Anytime"}</span><div class="grow small">${esc(x.title)}</div></div>`).join("")}</div>` : ""; };
+    inp.oninput = show; setTimeout(() => inp.focus(), 350);
+    $("#tdsave").onclick = async () => {
+      const items = parsePlanText(inp.value); if (!items.length) { window.ART.nudge(inp, "Type at least one line"); return; }
+      try { const rows = await rest("POST", "myday_plans", items.map(x => ({ date, title: x.title.slice(0, 120), start_time: x.start, end_time: x.end, color: "lavender" })));
+        S.plans.push(...rows); closeSheet(); render(); toast(`${rows.length} plan${rows.length > 1 ? "s" : ""} added`); } catch (e) { fail(e); }
+    };
+  });
+}
+
 function viewPlan() {
   const t = today(), sel = S.planDate, info = dayInfo(sel), st = S.settings;
   let strip = "";
@@ -341,30 +382,45 @@ function viewPlan() {
     strip += `<button data-pd="${ds}" class="${ds === sel ? "on" : ""}"><span class="w">${i === 0 ? "Today" : WD[d.getDay()]}</span><span class="d">${d.getDate()}</span><div class="dot" style="background:${KCOL[k]}"></div></button>`;
   }
   const plans = S.plans.filter(p => p.date === sel);
-  const blocks = [];
-  if (info.kind === "work") blocks.push({ auto: true, start: hhmm(st.work_start), title: "Work", sub: `${t12(hhmm(st.work_start))} – ${t12(hhmm(st.work_end))}`, color: "lavender" });
-  if (info.kind === "oncall") blocks.push({ auto: true, start: "08:00", title: "On-call from home", sub: "8am → 8am tomorrow", color: "navy" });
-  if (info.prevOncall) blocks.push({ auto: true, start: "00:00", title: "On-call ends", sub: "until 8am", color: "navy" });
-  plans.forEach(p => blocks.push({ id: p.id, start: hhmm(p.start_time), end: hhmm(p.end_time), title: p.title, sub: [p.start_time ? `${t12(hhmm(p.start_time))}${p.end_time ? " – " + t12(hhmm(p.end_time)) : ""}` : "", p.note].filter(Boolean).join(" · "), color: p.color }));
-  blocks.sort((a, b) => (a.start || "").localeCompare(b.start || ""));
   const lab = dayLabel(info, sel);
-  const rows = blocks.map(b => `<div class="tl"><div class="t">${b.start ? t12(b.start) : "Any"}</div>
-      <button class="blk c-${b.color}" ${b.id ? `data-plan="${b.id}"` : 'data-auto="1"'}><div class="bt">${esc(b.title)}</div>${b.sub ? `<div class="bs">${esc(b.sub)}</div>` : ""}</button></div>`).join("");
+  const hr = s => s ? Number(s.slice(0, 2)) : null;
+  // the shaded stretch for work / on-call
+  let band = null;
+  if (info.kind === "work") band = { from: hr(hhmm(st.work_start)), to: hr(hhmm(st.work_end)), label: "Work", cls: "band-work" };
+  if (info.kind === "oncall") band = { from: 8, to: 24, label: "On-call from home", cls: "band-oncall" };
+  const anytime = plans.filter(p => !p.start_time);
+  const timed = plans.filter(p => p.start_time).sort((a, b) => a.start_time.localeCompare(b.start_time));
+  const hours = timed.map(p => hr(p.start_time));
+  const first = Math.min(6, ...hours), last = Math.max(23, ...hours);
+  const blk = p => `<button class="blk c-${p.color}" data-plan="${p.id}"><div class="bt">${esc(p.title)}</div><div class="bs">${t12(hhmm(p.start_time))}${p.end_time ? " – " + t12(hhmm(p.end_time)) : ""}${p.note ? " · " + esc(p.note) : ""}</div></button>`;
+  let grid = "";
+  for (let h = first; h <= last; h++) {
+    const here = timed.filter(p => hr(p.start_time) === h);
+    const inBand = band && h >= band.from && h < band.to;
+    const bandStart = band && h === band.from;
+    grid += `<div class="hr ${inBand ? band.cls : ""} ${bandStart ? "bstart" : ""}"><div class="hl">${t12(pad(h % 24) + ":00")}</div><div class="hc">
+      ${bandStart ? `<button class="bandtag" data-auto="1">${esc(band.label)} · ${band.label === "Work" ? `${t12(hhmm(st.work_start))}–${t12(hhmm(st.work_end))}` : "8am → 8am"}</button>` : ""}
+      ${here.map(blk).join("")}
+      ${here.length ? "" : `<button class="slot" data-slot="${pad(h % 24)}:00" aria-label="Add at ${t12(pad(h % 24) + ":00")}"><span>+</span></button>`}</div></div>`;
+  }
   return `<div class="strip" id="strip">${strip}</div>
     <div class="between" style="margin:6px 2px 10px"><div class="h2">${esc(relDay(sel))}</div><span class="pill ${info.kind === "oncall" ? "navy" : info.kind === "leave" ? "sage" : info.kind === "work" ? "" : "warn"}">${esc(lab.title)}</span></div>
-    ${rows || `<div class="empty">Nothing planned yet.</div>`}
-    <button class="addline" id="addplan">+ Add to ${sel === t ? "my day" : relDay(sel)}</button>`;
+    <p class="tiny muted" style="margin:-4px 2px 10px">Tap any hour to add a plan there.</p>
+    ${info.prevOncall ? `<div class="tiny muted" style="margin:0 2px 8px">On-call from yesterday ends at 8am.</div>` : ""}
+    ${anytime.length ? `<div class="lbl">Anytime</div><div class="anyt">${anytime.map(p => `<button class="blk c-${p.color}" data-plan="${p.id}"><div class="bt">${esc(p.title)}</div>${p.note ? `<div class="bs">${esc(p.note)}</div>` : ""}</button>`).join("")}</div>` : ""}
+    <div class="hours" id="hours">${grid}</div>`;
 }
 function bindPlan() {
   const strip = $("#strip"), on = $(".on", strip); if (on) strip.scrollLeft = on.offsetLeft - 60;
   document.querySelectorAll("[data-pd]").forEach(b => b.onclick = () => { S.planDate = b.dataset.pd; render(); });
   document.querySelectorAll("[data-plan]").forEach(b => b.onclick = () => planSheet(S.plans.find(p => p.id === b.dataset.plan)));
   document.querySelectorAll("[data-auto]").forEach(b => b.onclick = () => daySheet(S.planDate));
-  $("#addplan").onclick = () => planSheet(null, S.planDate);
+  document.querySelectorAll("[data-slot]").forEach(b => b.onclick = () => planSheet(null, S.planDate, b.dataset.slot));
 }
 const COLORS = [["lavender", "var(--lav2)"], ["sage", "var(--sage)"], ["sun", "var(--sun)"], ["rose", "var(--rose)"], ["navy", "var(--navy)"]];
-function planSheet(p, date) {
-  const isNew = !p; p = p || { date: date || today(), title: "", start_time: "", end_time: "", note: "", color: "lavender" };
+function planSheet(p, date, at) {
+  const endOf = t => t ? `${pad((Number(t.slice(0, 2)) + 1) % 24)}:${t.slice(3, 5)}` : "";
+  const isNew = !p; p = p || { date: date || today(), title: "", start_time: at || "", end_time: endOf(at), note: "", color: "lavender" };
   let color = p.color;
   openSheet(`<h2 class="h2" style="margin-bottom:14px">${isNew ? "Add a plan" : "Edit plan"}</h2>
     <div class="field"><label>What</label><input type="text" id="pt" value="${esc(p.title)}" placeholder="Dinner with Dad"></div>
@@ -624,7 +680,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 12 (brighter scenes)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 13 (hour planner)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);
