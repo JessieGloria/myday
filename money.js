@@ -114,7 +114,8 @@ function viewMoney() {
 function viewOverview() {
   const m = S.moneyMonth, tt = totals(m), budget = Number(S.settings.monthly_budget || 0);
   const review = S.tx.filter(t => t.needs_review);
-  const left = budget ? budget - tt.spent : tt.income - tt.spent - tt.saved;
+  const spentOnly = !budget && !tt.income;  // no income or budget yet: just show what you've spent
+  const left = budget ? budget - tt.spent : spentOnly ? tt.spent : tt.income - tt.spent - tt.saved;
   const owed = cardOwed().filter(x => Math.abs(x.owed) > 0.004);
   const bills = billsFor(m).filter(x => x.status !== "paid");
   const cats = expCats().map(c => ({ c, spent: sum(monthTx(m).filter(t => t.type === "expense" && t.category_id === c.id)), budget: Number(c.budget || 0) }))
@@ -126,8 +127,8 @@ function viewOverview() {
   return `
   ${review.length ? `<button class="card between" id="mreview" style="width:100%;text-align:left;background:var(--sunbg);border:none;margin-bottom:12px"><div><div class="h2" style="color:var(--sunink)">${review.length} to check</div><div class="small" style="color:var(--sunink)">Saved from your screenshots. Tap to confirm.</div></div><span style="color:var(--sunink)">${I.right.replace("<svg", '<svg width="20" height="20"')}</span></button>` : ""}
   <div class="card leave" style="padding:16px 18px">
-    <div class="between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">${budget ? "LEFT TO SPEND" : "BALANCE THIS MONTH"}</div>
-    <div style="font-size:29px;font-weight:600;font-family:Nunito,Inter,sans-serif;${left < 0 ? "color:#F3B7B7" : ""}">${left < 0 ? "−" : ""}${rm(Math.abs(left))}</div></div>${window.ART.jar(58)}</div>
+    <div class="between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">${budget ? "LEFT TO SPEND" : spentOnly ? "SPENT THIS MONTH" : "BALANCE THIS MONTH"}</div>
+    <div style="font-size:29px;font-weight:600;font-family:Nunito,Inter,sans-serif;${left < 0 && !spentOnly ? "color:#F3B7B7" : ""}">${left < 0 && !spentOnly ? "−" : ""}${rm(Math.abs(left))}</div></div>${window.ART.jar(58)}</div>
     ${budget ? `<div class="tiny muted">of ${rm0(budget)} budget</div><div class="bar" style="background:#3E4480;margin-top:8px"><i class="ringless" style="width:${Math.min(100, tt.spent / budget * 100)}%;background:${tt.spent > budget ? "#F3B7B7" : "#F6D86B"}"></i></div>` : ""}
     <div class="between" style="margin-top:14px;font-size:10.5px">
       <div><div class="muted">Income</div><div style="font-size:14px;font-weight:600;color:#BFE3C9">${rm(tt.income)}</div></div>

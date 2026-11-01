@@ -699,7 +699,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 14 (type on timeline)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 15 (auto refresh)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);
@@ -748,7 +748,24 @@ document.addEventListener("touchmove", e => { if (e.touches && e.touches.length 
 // double-tap zoom is turned off in styles.css (touch-action: manipulation)
 // refresh "today" when the app comes back to the front on a new day
 let lastDay = today();
-document.addEventListener("visibilitychange", () => { if (!document.hidden && session && S.loaded) { if (today() !== lastDay) { lastDay = today(); S.planDate = lastDay; } loadAll().then(render).catch(() => {}); } });
+// keep data fresh: when the app comes back to the front, every minute while open, and on pull-down at the top
+let refreshing = false, lastRefresh = Date.now();
+function refreshData(showToast) {
+  if (!session || !S.loaded || refreshing) return;
+  if ($("#page-root .page") || $("#sheet-root .scrim") || document.activeElement?.matches("input,textarea,select")) return; // don't disturb typing
+  refreshing = true; lastRefresh = Date.now();
+  if (today() !== lastDay) { lastDay = today(); S.planDate = lastDay; }
+  loadAll().then(() => { render(); if (showToast) toast("Up to date"); }).catch(() => {}).finally(() => { refreshing = false; });
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshData(); });
+window.addEventListener("pageshow", e => { if (e.persisted) refreshData(); });
+window.addEventListener("focus", () => { if (Date.now() - lastRefresh > 5000) refreshData(); });
+setInterval(() => { if (!document.hidden) refreshData(); }, 60000);
+(() => { let y0 = null, pulled = 0; const ind = document.createElement("div"); ind.className = "ptr"; ind.innerHTML = "↓"; document.body.appendChild(ind);
+  document.addEventListener("touchstart", e => { y0 = (window.scrollY <= 0 && !$("#page-root .page") && !$("#sheet-root .scrim")) ? e.touches[0].clientY : null; pulled = 0; }, { passive: true });
+  document.addEventListener("touchmove", e => { if (y0 === null) return; pulled = Math.max(0, e.touches[0].clientY - y0); ind.style.transform = `translate(-50%, ${Math.min(pulled, 90) - 40}px) rotate(${pulled * 2}deg)`; ind.style.opacity = Math.min(1, pulled / 70); }, { passive: true });
+  document.addEventListener("touchend", () => { if (y0 === null) return; if (pulled > 80) refreshData(true); y0 = null; ind.style.transform = ""; ind.style.opacity = 0; }, { passive: true });
+})();
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 window.MD = Object.assign(window.MD, { openPop, closePage, replay: () => { lastTab = null; }, dayInfo, setDayKind, leaveSummary, $, esc, pad, ymd, parse, addDays, today, fmtShort, relDay, nowIso, I, S, db, rest, render, openSheet, closeSheet, toast, fail, CFG });
 window.addEventListener("DOMContentLoaded", render);
