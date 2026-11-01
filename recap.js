@@ -31,12 +31,12 @@ function recapSheet(m = lastMonth()) {
   const [y, mo] = m.split("-").map(Number), s = stats(m), p = stats(prevMonth(m));
   const diff = s.spent - p.spent, hasPrev = p.spent > 0;
   const tile = (n, l) => `<div class="stat" style="text-align:left"><b>${n}</b><span class="tiny muted">${l}</span></div>`;
-  openSheet(`<div class="between"><div><div class="lbl" style="margin:0">MONTHLY RECAP</div><h2 class="h1" style="font-size:24px">${MONL[mo - 1]} ${y}</h2></div>
+  openSheet(`<div class="between"><div><div class="lbl" style="margin:0">MONTHLY RECAP</div><h2 class="h1" style="font-size:23px">${MONL[mo - 1]} ${y}</h2></div>
       <div class="row"><button class="iconbtn" data-rm="${prevMonth(m)}" aria-label="Previous month">${I.left}</button>${m < lastMonth() ? `<button class="iconbtn" data-rm="${(() => { const d = new Date(y, mo, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; })()}" aria-label="Next month">${I.right}</button>` : ""}</div></div>
     <div class="card leave" style="margin-top:14px">
-      <div class="between" style="font-size:11.5px"><div><div class="muted">Income</div><div style="font-size:15px;font-weight:600;color:#BFE3C9">${rm(s.income)}</div></div>
-      <div><div class="muted">Spent</div><div style="font-size:15px;font-weight:600;color:#F3B7B7">${rm(s.spent)}</div></div>
-      <div><div class="muted">Saved</div><div style="font-size:15px;font-weight:600;color:#F6D86B">${rm(s.saved)}</div></div></div>
+      <div class="between" style="font-size:10.5px"><div><div class="muted">Income</div><div style="font-size:14px;font-weight:600;color:#BFE3C9">${rm(s.income)}</div></div>
+      <div><div class="muted">Spent</div><div style="font-size:14px;font-weight:600;color:#F3B7B7">${rm(s.spent)}</div></div>
+      <div><div class="muted">Saved</div><div style="font-size:14px;font-weight:600;color:#F6D86B">${rm(s.saved)}</div></div></div>
       ${hasPrev ? `<div class="small muted" style="margin-top:10px">${diff <= 0 ? `You spent ${rm(-diff)} less than ${MONL[(mo + 10) % 12]}.` : `You spent ${rm(diff)} more than ${MONL[(mo + 10) % 12]}.`}</div>` : ""}</div>
     ${s.top.length ? `<div class="lbl">Where it went</div><div class="list">${s.top.map(([n, v], i) => `<div class="item"><div class="grow">${i + 1}. ${esc(n)}</div><span class="small">${rm(v)}</span></div>`).join("")}</div>` : ""}
     ${s.bills ? `<p class="small muted" style="margin:8px 2px">${s.bills} bill${s.bills > 1 ? "s" : ""} paid, ${rm(s.billsAmt)} in total.</p>` : ""}

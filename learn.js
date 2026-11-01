@@ -83,8 +83,8 @@ function viewLearn() {
   ${running ? `<div class="card status st-oncall" style="margin-bottom:12px"><div style="flex:none">${plant(stageOf(running), colorOf(running), 44)}</div><div style="flex:1;min-width:0"><div class="h2">Studying ${esc(running.title)}</div><div class="small muted" id="tclock">just started</div></div><button class="btn sun" id="tstop">Done</button></div>` : ""}
   <div class="card leave">
     <div class="between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">STUDY STREAK</div>
-      <div style="font-size:26px;font-weight:700;font-family:Nunito,Inter,sans-serif">${st} day${st === 1 ? "" : "s"} <span style="font-size:13px;font-weight:400;color:var(--navytext)">${st ? "in a row" : "· study today to start"}</span></div></div>
-      <div style="text-align:right"><div style="font-size:18px;font-weight:600">${hm(weekMins)}</div><div class="tiny muted">this week</div></div></div>
+      <div style="font-size:25px;font-weight:700;font-family:Nunito,Inter,sans-serif">${st} day${st === 1 ? "" : "s"} <span style="font-size:12px;font-weight:400;color:var(--navytext)">${st ? "in a row" : "· study today to start"}</span></div></div>
+      <div style="text-align:right"><div style="font-size:17px;font-weight:600">${hm(weekMins)}</div><div class="tiny muted">this week</div></div></div>
     <div class="weekdrops">${WD1.map((l, i) => { const d = addDays(wk, i), on = days.has(d), isT = d === today();
       return `<div class="${on ? "on" : ""} ${isT ? "today" : ""}"><svg viewBox="0 0 20 24" width="20" height="24" aria-hidden="true"><path d="M10 2 C10 2 3 11 3 15.5 A7 7 0 0 0 17 15.5 C17 11 10 2 10 2Z" fill="${on ? "#9DC4F0" : "none"}" stroke="${on ? "#9DC4F0" : "#5A5F9A"}" stroke-width="1.6"/></svg><span>${l}</span></div>`; }).join("")}</div>
   </div>
@@ -98,7 +98,7 @@ function topicCard(t, timer) {
   const sub = [STAGES[st][0], sb.length ? `${done} of ${sb.length} subtopics` : "", mins ? hm(mins) : "", last ? "last " + (last.date === today() ? "today" : fmtD(last.date)) : "", t.target_date ? "aim " + fmtD(t.target_date) : ""].filter(Boolean).join(" · ");
   return `<div class="card topic" id="tc-${t.id}">
     <button class="topic-main" data-topic="${t.id}"><div class="pot">${plant(st, colorOf(t), 62)}</div>
-      <div style="flex:1;min-width:0"><div class="h2" style="font-size:15px">${esc(t.title)}</div><div class="tiny muted">${sub}</div>
+      <div style="flex:1;min-width:0"><div class="h2" style="font-size:14px">${esc(t.title)}</div><div class="tiny muted">${sub}</div>
       ${sb.length ? `<div class="bar" style="margin-top:7px"><i style="width:${done / sb.length * 100}%;background:var(--sage)"></i></div>` : leaves(st)}</div></button>
     <div class="subs">${sb.map(x => `<button class="subrow ${x.done_at ? "done" : ""}" data-sub="${x.id}"><span class="leafchk">${x.done_at ? '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 17 C3 8 9 3 17 3 C17 11 12 17 3 17Z" fill="#7FA38A"/><path d="M6 14 L14 6" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg>' : '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 17 C3 8 9 3 17 3 C17 11 12 17 3 17Z" fill="none" stroke="#C9CBF3" stroke-width="1.6"/></svg>'}</span><span class="title">${esc(x.title)}</span></button>`).join("")}
       <form class="subadd" data-subadd="${t.id}"><input type="text" placeholder="${sb.length ? "+ Add a subtopic" : "+ Add subtopics to grow this plant"}" autocomplete="off"><button class="btn" type="submit" aria-label="Add subtopic">Add</button></form></div>
@@ -110,7 +110,7 @@ function topicCard(t, timer) {
 }
 
 function learnHeader() {
-  return `<div class="top"><div><h1 class="h1">Learn</h1><div class="small muted serif" style="font-size:14px">${S.learnView === "books" ? "your reading shelf" : "your little study garden"}</div></div><div class="row">${window.ART.book(62)}</div></div>
+  return `<div class="top"><div><h1 class="h1">Learn</h1><div class="small muted serif" style="font-size:13px">${S.learnView === "books" ? "your reading shelf" : "your little study garden"}</div></div><div class="row">${window.ART.book(62)}</div></div>
   <div class="seg" style="margin-top:0">${[["topics", "Topics"], ["books", "Books"]].map(([k, l]) => `<button data-lv="${k}" class="${(S.learnView || "topics") === k ? "on" : ""}">${l}</button>`).join("")}</div>`;
 }
 
@@ -134,12 +134,12 @@ function viewBooks() {
   const weekPages = pagesIn(wk, today()), finishedYr = done.filter(b => b.finished_at.startsWith(yr)).length;
   const card = b => { const p = b.total_pages ? b.current_page / b.total_pages : 0, last = S.bookLogs.find(l => l.book_id === b.id);
     return `<div class="card bookcard" id="bk-${b.id}"><button class="topic-main" data-book="${b.id}"><div class="bookbox">${bookArt(b.color, p)}</div>
-      <div style="flex:1;min-width:0"><div class="h2" style="font-size:15px">${esc(b.title)}</div>${b.author ? `<div class="tiny muted">${esc(b.author)}</div>` : ""}
-        <div style="font-size:17px;font-weight:700;font-family:Nunito,Inter,sans-serif;margin-top:4px">Page ${b.current_page}${b.total_pages ? ` <span class="small muted" style="font-weight:400">of ${b.total_pages}</span>` : ""}</div>
+      <div style="flex:1;min-width:0"><div class="h2" style="font-size:14px">${esc(b.title)}</div>${b.author ? `<div class="tiny muted">${esc(b.author)}</div>` : ""}
+        <div style="font-size:16px;font-weight:700;font-family:Nunito,Inter,sans-serif;margin-top:4px">Page ${b.current_page}${b.total_pages ? ` <span class="small muted" style="font-weight:400">of ${b.total_pages}</span>` : ""}</div>
         ${b.total_pages ? `<div class="bar" style="margin-top:5px"><i style="width:${p * 100}%;background:${(BCOL[b.color] || BCOL.lavender)[1]}"></i></div><div class="tiny muted" style="margin-top:3px">${Math.floor(p * 100)}% · ${b.total_pages - b.current_page} pages to go${last ? " · read " + (last.date === today() ? "today" : fmtD(last.date)) : ""}</div>` : ""}</div></button>
       <div class="topic-acts"><button class="btn sun" data-page="${b.id}">Update page</button><button class="btn" data-finish="${b.id}">Finished it</button></div></div>`; };
   return `<div class="card leave between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">READING</div>
-      <div style="font-size:24px;font-weight:700;font-family:Nunito,Inter,sans-serif">${weekPages} <span style="font-size:13px;font-weight:400;color:var(--navytext)">pages this week</span></div>
+      <div style="font-size:23px;font-weight:700;font-family:Nunito,Inter,sans-serif">${weekPages} <span style="font-size:12px;font-weight:400;color:var(--navytext)">pages this week</span></div>
       <div class="small muted">${finishedYr} book${finishedYr === 1 ? "" : "s"} finished in ${yr}</div></div>${bookArt("rose", .6, 46)}</div>
     <button class="btn block" id="addbook" style="margin-top:14px">+ Add a book</button>
     ${reading.length ? `<div class="lbl">Reading now</div>${reading.map(card).join("")}` : '<div class="empty">Add a book you\'re reading and keep track of your page.</div>'}
@@ -165,7 +165,7 @@ async function setPage(b, page, finish = false) {
   } catch (e) { fail(e); }
 }
 function pageSheet(b) {
-  openSheet(`<div class="row" style="gap:12px">${bookArt(b.color, b.total_pages ? b.current_page / b.total_pages : 0, 48)}<div><h2 class="h2">Which page are you on?</h2><div class="small muted">${esc(b.title)}</div></div></div>
+  window.MD.openPop(`<div class="row" style="gap:12px">${bookArt(b.color, b.total_pages ? b.current_page / b.total_pages : 0, 48)}<div><h2 class="h2">Which page are you on?</h2><div class="small muted">${esc(b.title)}</div></div></div>
     <div class="field" style="margin-top:14px"><label>Page${b.total_pages ? ` (of ${b.total_pages})` : ""}</label><input type="number" inputmode="numeric" id="pg" value="${b.current_page || ""}" placeholder="0"></div>
     ${b.total_pages ? `<input type="range" id="pgr" min="0" max="${b.total_pages}" value="${b.current_page}" style="width:100%;accent-color:#8E92E0;margin:2px 0 12px">` : ""}
     <div class="paint" style="margin:0 0 12px">${[5, 10, 20, 50].map(n => `<button data-plus="${n}">+${n}</button>`).join("")}</div>
@@ -258,7 +258,7 @@ async function grow(t, by) {
 }
 function waterSheet(t) {
   let mins = 30;
-  openSheet(`<div class="row" style="gap:12px">${plant(stageOf(t), colorOf(t), 56)}<div><h2 class="h2">Log study</h2><div class="small muted">${esc(t.title)}</div></div></div>
+  window.MD.openPop(`<div class="row" style="gap:12px">${plant(stageOf(t), colorOf(t), 56)}<div><h2 class="h2">Log study</h2><div class="small muted">${esc(t.title)}</div></div></div>
     <div class="lbl">How long?</div>
     <div class="paint" style="margin:0">${[15, 30, 45, 60, 90].map(m => `<button data-m="${m}" class="${m === mins ? "on" : ""}">${hm(m)}</button>`).join("")}</div>
     <div class="field" style="margin-top:10px"><label>Or type minutes</label><input type="number" inputmode="numeric" id="wm" placeholder="30"></div>
@@ -317,7 +317,7 @@ function topicSheet(t) {
   });
 }
 function topicQuickAdd() {
-  openSheet(`<div class="row" style="gap:12px">${plant(0, "#E8A0A0", 52)}<h2 class="h2">Plant a topic</h2></div><div class="field" style="margin-top:12px"><label>What do you want to learn?</label><input type="text" id="qtopic" placeholder="Airway management basics"></div><button class="btn primary block" id="qts">Plant</button>`, () => {
+  window.MD.openPop(`<div class="row" style="gap:12px">${plant(0, "#E8A0A0", 52)}<h2 class="h2">Plant a topic</h2></div><div class="field" style="margin-top:12px"><label>What do you want to learn?</label><input type="text" id="qtopic" placeholder="Airway management basics"></div><button class="btn primary block" id="qts">Plant</button>`, () => {
     $("#qtopic").focus();
     $("#qts").onclick = async () => { const v = $("#qtopic").value.trim(); if (!v) { window.ART.nudge($("#qtopic")); return; }
       try { const t = await db.insert("myday_topics", { title: v, stage: 0 }); S.topics.push(t); closeSheet(); S.tab = "learn"; window.ART.celebrate(`#tc-${t.id} .pot`); render(); toast("Topic planted"); } catch (e) { fail(e); } };

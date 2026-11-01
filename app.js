@@ -155,7 +155,8 @@ const fail = e => toast(e.message || "Something went wrong");
 /* ---------- sheet ---------- */
 /* Bottom sheets glide up from the bottom, can be swiped down, and glide away when closed. */
 let closeTimer = null;
-function openSheet(html, onMount) {
+const openSheet = (h, m) => openPage(h, m);
+function openPop(html, onMount) {
   const root = $("#sheet-root");
   let scrim = $(".scrim", root);
   if (scrim && !scrim.classList.contains("closing")) {
@@ -172,7 +173,7 @@ function openSheet(html, onMount) {
   const sh = $(".sheet", scrim);
   document.body.classList.add("sheet-open");
   requestAnimationFrame(() => requestAnimationFrame(() => scrim.classList.add("open")));
-  scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
+  scrim.addEventListener("click", e => { if (e.target === scrim) closePop(); });
   // swipe down to close
   let y0 = null, dy = 0, t0 = 0;
   sh.addEventListener("touchstart", e => { if (sh.scrollTop > 0 || e.target.closest("input,textarea,select")) { y0 = null; return; } y0 = e.touches[0].clientY; dy = 0; t0 = Date.now(); }, { passive: true });
@@ -180,10 +181,10 @@ function openSheet(html, onMount) {
     if (dy > 0) { sh.style.transition = "none"; sh.style.transform = `translateY(${dy}px)`; scrim.style.setProperty("--dim", String(Math.max(0, .38 - dy / 900))); } }, { passive: true });
   sh.addEventListener("touchend", () => { if (y0 === null) return; const fast = dy > 40 && Date.now() - t0 < 250; y0 = null;
     sh.style.transition = ""; scrim.style.removeProperty("--dim");
-    if (dy > 110 || fast) closeSheet(); else sh.style.transform = ""; });
+    if (dy > 110 || fast) closePop(); else sh.style.transform = ""; });
   onMount && onMount(sh);
 }
-function closeSheet() {
+function closePop() {
   const scrim = $("#sheet-root .scrim");
   $("#fab")?.classList.remove("open");
   document.body.classList.remove("sheet-open");
@@ -193,13 +194,59 @@ function closeSheet() {
   closeTimer = setTimeout(() => { if (scrim.isConnected) scrim.remove(); }, 320);
 }
 
+/* Full pages: forms slide in from the right, Save sits at the bottom, Back (or a swipe from the left edge) slides them away. */
+let pageTimer = null;
+function openPage(html, onMount) {
+  closeMenu(true);
+  if ($("#sheet-root .scrim:not(.closing)")) { const sc = $("#sheet-root .scrim"); sc.remove(); }
+  const root = $("#page-root");
+  let pg = $(".page", root);
+  if (pg && !pg.classList.contains("closing")) {
+    const body = $(".pagebody", pg); body.innerHTML = html; body.scrollTop = 0;
+    body.classList.remove("swap"); void body.offsetWidth; body.classList.add("swap");
+    onMount && onMount(body); return;
+  }
+  clearTimeout(pageTimer);
+  root.innerHTML = `<div class="page" role="dialog" aria-modal="true"><div class="pagebar"><button class="pageback" aria-label="Back">${I.left}<span>Back</span></button></div><div class="pagebody">${html}</div></div>`;
+  pg = $(".page", root);
+  const body = $(".pagebody", pg);
+  document.body.classList.add("page-open");
+  requestAnimationFrame(() => requestAnimationFrame(() => pg.classList.add("open")));
+  $(".pageback", pg).onclick = () => closePage();
+  // swipe from the left edge to go back
+  let x0 = null, dx = 0, t0 = 0;
+  pg.addEventListener("touchstart", e => { const x = e.touches[0].clientX; if (x > 28) { x0 = null; return; } x0 = x; dx = 0; t0 = Date.now(); }, { passive: true });
+  pg.addEventListener("touchmove", e => { if (x0 === null) return; dx = Math.max(0, e.touches[0].clientX - x0); pg.style.transition = "none"; pg.style.transform = `translateX(${dx}px)`; }, { passive: true });
+  pg.addEventListener("touchend", () => { if (x0 === null) return; const fast = dx > 50 && Date.now() - t0 < 250; x0 = null; pg.style.transition = "";
+    if (dx > innerWidth * .33 || fast) closePage(); else pg.style.transform = ""; });
+  onMount && onMount(body);
+}
+function closePage() {
+  const pg = $("#page-root .page");
+  document.body.classList.remove("page-open");
+  if (!pg || pg.classList.contains("closing")) return;
+  pg.style.transform = ""; pg.classList.remove("open"); pg.classList.add("closing");
+  pageTimer = setTimeout(() => { if (pg.isConnected) pg.remove(); }, 380);
+}
+// Close the top layer: a small pop-up first, otherwise the page
+function closeSheet() {
+  if ($("#sheet-root .scrim:not(.closing)")) closePop(); else closePage();
+}
+/* Quick add: a small menu that grows out of the + button */
+function closeMenu(instant) {
+  const m = $("#menu-root .qmenu-wrap"); $("#fab")?.classList.remove("open");
+  if (!m) return;
+  if (instant) { m.remove(); return; }
+  m.classList.remove("open"); setTimeout(() => m.remove(), 220);
+}
+
 
 /* ---------- render root ---------- */
 function render() {
   const app = $("#app");
   if (!session) { renderLogin(app); return; }
   if (!S.loaded) {
-    app.innerHTML = `<div class="login"><div class="brand">MY DAY</div><div class="tag">LOADING…</div></div>`;
+    app.innerHTML = skeleton();
     loadAll().then(render).catch(e => { app.innerHTML = `<div class="login"><div class="brand">MY DAY</div><p class="err">${esc(e.message)}</p><button class="btn" id="retry">Try again</button></div>`; $("#retry").onclick = render; });
     return;
   }
@@ -212,13 +259,18 @@ function render() {
 }
 let lastTab = null;
 
+function skeleton() {
+  const b = (h, w = "100%", mt = 10, r = 20) => `<div class="sk" style="height:${h}px;width:${w};margin-top:${mt}px;border-radius:${r}px"></div>`;
+  return `<div class="wrap">${b(12, "30%", 4, 6)}${b(26, "55%", 8, 8)}${b(12, "40%", 8, 6)}${b(70, "100%", 18)}<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${b(86)}${b(86)}</div>${b(40, "100%", 16, 14)}${b(160)}${b(120)}</div>`;
+}
+window.MD_skeletonCards = n => Array.from({ length: n }, (_, i) => `<div class="sk" style="height:${i ? 64 : 110}px;margin-top:10px;border-radius:20px"></div>`).join("");
 function nav() {
   const tabs = [["today", "Today", I.home], ["calendar", "Calendar", I.cal], ["money", "Money", I.wallet], ["goals", "Goals", I.target], ["learn", "Learn", I.book]];
   return `<nav class="nav">${tabs.map(([k, l, ic]) => `<button data-tab="${k}" class="${S.tab === k ? "on" : ""}">${ic}<span>${l}</span></button>`).join("")}</nav>`;
 }
 function bindCommon() {
   document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.paint = null; render(); window.scrollTo(0, 0); });
-  $("#fab").onclick = () => { const open = $("#sheet-root .scrim:not(.closing)"); if (open) closeSheet(); else quickAdd(); };
+  $("#fab").onclick = () => { if ($("#sheet-root .scrim:not(.closing)")) { closePop(); return; } quickAdd(); };
   const g = $("#gear"); if (g) g.onclick = () => ({ calendar: settingsSheet }[S.tab] || todaySettings)();
 }
 
@@ -427,7 +479,7 @@ function bindBuy() {
     if (x.done_at) { try { Object.assign(x, await db.update("myday_shopping", x.id, { done_at: null, price: null }));
       const lt = (S.tx || []).find(t => t.shopping_id === x.id); if (lt) { await db.remove("myday_transactions", lt.id); S.tx = S.tx.filter(t => t !== lt); }
       render(); } catch (e) { fail(e); } return; }
-    openSheet(`<h2 class="h2">Bought ${esc(x.title)}</h2><p class="small muted" style="margin:4px 0 14px">Add the price if you like. You can skip it.</p>
+    openPop(`<h2 class="h2">Bought ${esc(x.title)}</h2><p class="small muted" style="margin:4px 0 14px">Add the price if you like. You can skip it.</p>
       <div class="field"><label>Price (RM)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="bp" placeholder="0.00"></div>
       <div class="btnrow"><button class="btn" id="bskip">Skip</button><button class="btn primary" id="bok">Save</button></div>`, () => {
       $("#bp").focus();
@@ -481,7 +533,7 @@ function viewCalendar() {
     <div class="cal" style="margin-top:10px"><div class="wd">${["M", "T", "W", "T", "F", "S", "S"].map(x => `<div>${x}</div>`).join("")}</div><div class="grid">${cells}</div>
     <div class="legend"><span><i style="background:var(--peri)"></i>Work</span><span><i style="background:var(--navy)"></i>On-call</span><span><i style="background:var(--sun)"></i>Off / holiday</span><span><i style="background:var(--sage)"></i>Leave</span><span><i style="background:var(--rose)"></i>Plan</span></div></div>
     <button class="card leave between" id="leavecard" style="margin-top:12px;width:100%;text-align:left"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">ANNUAL LEAVE ${lv.cy}</div>
-      <div style="font-size:26px;font-weight:500">${lv.left} <span style="font-size:14px;font-weight:400">days left</span></div>
+      <div style="font-size:25px;font-weight:500">${lv.left} <span style="font-size:13px;font-weight:400">days left</span></div>
       <div class="small muted">${lv.taken} taken${lv.booked ? ` · ${lv.booked} booked ahead` : ""} · ${lv.next} available in ${lv.cy + 1}</div></div>
       <svg class="ring" width="58" height="58" aria-hidden="true"><circle cx="29" cy="29" r="23" fill="none" stroke="#3E4480" stroke-width="7"/><circle class="ringfill" cx="29" cy="29" r="23" fill="none" stroke="#F6D86B" stroke-width="7" stroke-linecap="round" stroke-dasharray="${Math.max(0, Math.min(1, lv.left / Math.max(1, Number(S.settings.leave_entitlement)))) * 144.5} 145" transform="rotate(-90 29 29)"/></svg></button>
     <div class="lbl">Coming up</div>
@@ -529,32 +581,36 @@ function daySheet(ds) {
 
 /* ---------- coming soon ---------- */
 function viewSoon(title, text, step) {
-  return `<div class="top"><div><h1 class="h1">${title}</h1><div class="small muted serif" style="font-size:14px">little by little</div></div><button class="iconbtn" id="gear" aria-label="Settings">${I.gear}</button></div>
+  return `<div class="top"><div><h1 class="h1">${title}</h1><div class="small muted serif" style="font-size:13px">little by little</div></div><button class="iconbtn" id="gear" aria-label="Settings">${I.gear}</button></div>
   <div class="card soon-card"><svg width="90" height="90" viewBox="0 0 130 150" aria-hidden="true"><circle cx="98" cy="26" r="20" fill="#F6D86B"/><path d="M65 105 C40 80 30 55 45 30 C60 50 68 75 65 105Z" fill="#7FA38A"/><path d="M68 105 C85 75 100 60 118 58 C110 85 90 100 68 105Z" fill="#9CBBA4"/><path d="M40 104 h52 l-7 40 h-38z" fill="#EFE9DF" stroke="#DDD5C8"/></svg>
   <h2 class="h2" style="margin-top:10px">Coming in ${step}</h2><p class="small muted">${text}</p></div>`;
 }
 
 /* ---------- quick add ---------- */
 function quickAdd() {
-  setTimeout(() => $("#fab")?.classList.add("open"), 0);
-  openSheet(`<h2 class="h2" style="margin-bottom:14px">Quick add</h2><div class="qa">
-    <button id="qp">${I.plan}Plan</button><button id="qt">${I.todo}To do</button><button id="qb">${I.cart}To buy</button>
-    <button id="qe">${I.coin}Money</button><button id="ql">${I.book}Topic</button><button id="qr">${I.cal}Reminder</button></div>`, () => {
-    $("#qp").onclick = () => planSheet(null, S.tab === "today" ? S.planDate : today());
-    $("#qt").onclick = () => todoSheet(null);
-    $("#qb").onclick = () => {
-      openSheet(`<h2 class="h2" style="margin-bottom:14px">Add to buy</h2><div class="field"><label>Item</label><input type="text" id="qbi" placeholder="Eggs"></div>
-        <div class="field"><label>Group</label><select id="qbg">${[...new Set([...GROUPS, ...S.shopping.map(x => x.group_name)])].map(g => `<option ${g === buyGroup ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></div>
-        <button class="btn primary block" id="qbs">Add</button>`, () => {
-        $("#qbi").focus();
-        $("#qbs").onclick = async () => { const v = $("#qbi").value.trim(); if (!v) return;
-          try { S.shopping.push(await db.insert("myday_shopping", { title: v, group_name: $("#qbg").value })); closeSheet(); S.tab = "today"; S.todayView = "buy"; render(); toast("Added to your list"); } catch (e) { fail(e); } };
-      });
-    };
-    $("#qe").onclick = () => window.MD.txSheet(null);
-    $("#ql").onclick = () => window.MD.topicQuickAdd();
-    $("#qr").onclick = () => window.MD.remSheet(null);
+  const root = $("#menu-root");
+  if ($(".qmenu-wrap", root)) { closeMenu(); return; }
+  const items = [["qp", I.plan, "Plan", "var(--lav)"], ["qt", I.todo, "To do", "var(--sagebg)"], ["qb", I.cart, "To buy", "var(--sunbg)"], ["qe", I.coin, "Money", "var(--rosebg)"], ["ql", I.book, "Topic", "var(--lav)"], ["qr", I.cal, "Reminder", "var(--sunbg)"]];
+  root.innerHTML = `<div class="qmenu-wrap"><div class="qmenu" role="menu">${items.map(([id, ic, l, bg]) => `<button id="${id}" role="menuitem"><span class="qi" style="background:${bg}">${ic}</span>${l}</button>`).join("")}</div></div>`;
+  const w = $(".qmenu-wrap", root);
+  $("#fab")?.classList.add("open");
+  requestAnimationFrame(() => requestAnimationFrame(() => w.classList.add("open")));
+  w.addEventListener("click", e => { if (e.target === w) closeMenu(); });
+  const go = fn => () => { closeMenu(true); fn(); };
+  $("#qp").onclick = go(() => planSheet(null, S.tab === "today" ? S.planDate : today()));
+  $("#qt").onclick = go(() => todoSheet(null));
+  $("#qb").onclick = go(() => {
+    openPop(`<h2 class="h2" style="margin-bottom:14px">Add to buy</h2><div class="field"><label>Item</label><input type="text" id="qbi" placeholder="Eggs"></div>
+      <div class="field"><label>Group</label><select id="qbg">${[...new Set([...GROUPS, ...S.shopping.map(x => x.group_name)])].map(g => `<option ${g === buyGroup ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></div>
+      <button class="btn primary block" id="qbs">Add</button>`, () => {
+      $("#qbi").focus();
+      $("#qbs").onclick = async () => { const v = $("#qbi").value.trim(); if (!v) { window.ART.nudge($("#qbi")); return; }
+        try { S.shopping.push(await db.insert("myday_shopping", { title: v, group_name: $("#qbg").value })); closeSheet(); S.tab = "today"; S.todayView = "buy"; render(); toast("Added to your list"); } catch (e) { fail(e); } };
+    });
   });
+  $("#qe").onclick = go(() => window.MD.txSheet(null));
+  $("#ql").onclick = go(() => window.MD.topicQuickAdd());
+  $("#qr").onclick = go(() => window.MD.remSheet(null));
 }
 
 /* ---------- settings ---------- */
@@ -567,7 +623,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 9 (smooth sheets)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 10 (pages)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);
@@ -582,7 +638,7 @@ function todaySettings() {
 function settingsSheet() {
   const st = S.settings, lv = leaveSummary();
   openSheet(`<h2 class="h2" style="margin-bottom:6px">Annual leave</h2>
-    <div class="card leave between" style="margin:8px 0 4px"><div><div style="font-size:22px;font-weight:600">${lv.left} days left</div><div class="small muted">${lv.taken} taken${lv.booked ? ` · ${lv.booked} booked` : ""} · ${lv.next} available in ${lv.cy + 1}</div></div>${window.ART.moon(46)}</div>
+    <div class="card leave between" style="margin:8px 0 4px"><div><div style="font-size:21px;font-weight:600">${lv.left} days left</div><div class="small muted">${lv.taken} taken${lv.booked ? ` · ${lv.booked} booked` : ""} · ${lv.next} available in ${lv.cy + 1}</div></div>${window.ART.moon(46)}</div>
     <div class="lbl">Book leave</div>
     <div class="field"><label>From</label><input type="date" id="lf" value="${today()}"></div>
     <div class="field"><label>To</label><input type="date" id="lt" value="${today()}"></div>
@@ -618,6 +674,6 @@ document.addEventListener("touchmove", e => { if (e.touches && e.touches.length 
 let lastDay = today();
 document.addEventListener("visibilitychange", () => { if (!document.hidden && session && S.loaded) { if (today() !== lastDay) { lastDay = today(); S.planDate = lastDay; } loadAll().then(render).catch(() => {}); } });
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
-window.MD = Object.assign(window.MD, { replay: () => { lastTab = null; }, dayInfo, setDayKind, leaveSummary, $, esc, pad, ymd, parse, addDays, today, fmtShort, relDay, nowIso, I, S, db, rest, render, openSheet, closeSheet, toast, fail, CFG });
+window.MD = Object.assign(window.MD, { openPop, closePage, replay: () => { lastTab = null; }, dayInfo, setDayKind, leaveSummary, $, esc, pad, ymd, parse, addDays, today, fmtShort, relDay, nowIso, I, S, db, rest, render, openSheet, closeSheet, toast, fail, CFG });
 window.addEventListener("DOMContentLoaded", render);
 })();

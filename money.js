@@ -99,6 +99,7 @@ function monthHeader() {
     <div class="seg" style="margin-top:4px">${[["overview", "Overview"], ["history", "History"], ["bills", "Bills"]].map(([k, l]) => `<button data-mv="${k}" class="${S.moneyView === k ? "on" : ""}">${l}</button>`).join("")}</div>`;
 }
 function viewMoney() {
+  if (S.moneyLoading) return monthHeader() + window.MD_skeletonCards(5);
   return monthHeader() + ({ overview: viewOverview, history: viewHistory, bills: viewBills }[S.moneyView])();
 }
 function viewOverview() {
@@ -117,12 +118,12 @@ function viewOverview() {
   ${review.length ? `<button class="card between" id="mreview" style="width:100%;text-align:left;background:var(--sunbg);border:none;margin-bottom:12px"><div><div class="h2" style="color:var(--sunink)">${review.length} to check</div><div class="small" style="color:var(--sunink)">Saved from your screenshots. Tap to confirm.</div></div><span style="color:var(--sunink)">${I.right.replace("<svg", '<svg width="20" height="20"')}</span></button>` : ""}
   <div class="card leave" style="padding:16px 18px">
     <div class="between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">${budget ? "LEFT TO SPEND" : "BALANCE THIS MONTH"}</div>
-    <div style="font-size:30px;font-weight:600;font-family:Nunito,Inter,sans-serif;${left < 0 ? "color:#F3B7B7" : ""}">${left < 0 ? "−" : ""}${rm(Math.abs(left))}</div></div>${window.ART.jar(58)}</div>
+    <div style="font-size:29px;font-weight:600;font-family:Nunito,Inter,sans-serif;${left < 0 ? "color:#F3B7B7" : ""}">${left < 0 ? "−" : ""}${rm(Math.abs(left))}</div></div>${window.ART.jar(58)}</div>
     ${budget ? `<div class="tiny muted">of ${rm0(budget)} budget</div><div class="bar" style="background:#3E4480;margin-top:8px"><i class="ringless" style="width:${Math.min(100, tt.spent / budget * 100)}%;background:${tt.spent > budget ? "#F3B7B7" : "#F6D86B"}"></i></div>` : ""}
-    <div class="between" style="margin-top:14px;font-size:11.5px">
-      <div><div class="muted">Income</div><div style="font-size:15px;font-weight:600;color:#BFE3C9">${rm(tt.income)}</div></div>
-      <div><div class="muted">Spent</div><div style="font-size:15px;font-weight:600;color:#F3B7B7">${rm(tt.spent)}</div></div>
-      <div><div class="muted">Saved</div><div style="font-size:15px;font-weight:600;color:#F6D86B">${rm(tt.saved)}</div></div></div>
+    <div class="between" style="margin-top:14px;font-size:10.5px">
+      <div><div class="muted">Income</div><div style="font-size:14px;font-weight:600;color:#BFE3C9">${rm(tt.income)}</div></div>
+      <div><div class="muted">Spent</div><div style="font-size:14px;font-weight:600;color:#F3B7B7">${rm(tt.spent)}</div></div>
+      <div><div class="muted">Saved</div><div style="font-size:14px;font-weight:600;color:#F6D86B">${rm(tt.saved)}</div></div></div>
   </div>
   ${(() => { const banks = S.accounts.filter(a => a.kind !== "savings" && a.kind !== "card" && accBalance(a) !== null);
     return banks.length ? `<div class="acctiles">${banks.map(a => { const b = accBalance(a); return `<div class="acctile"><div class="row" style="gap:6px"><span class="accdot" style="background:${/cimb/i.test(a.name) ? "#C8102E" : /maybank/i.test(a.name) ? "#F6C500" : "var(--peri)"}"></span><span class="small muted">${esc(a.name)}</span></div><div class="accbal ${b < 0 ? "neg" : ""}">${b < 0 ? "−" : ""}${rm(Math.abs(b))}</div></div>`; }).join("")}</div>` : ""; })()}
@@ -153,7 +154,7 @@ function viewBills() {
     <p class="tiny faint" style="text-align:center;margin-top:14px">Tapping Paid saves the bill as spending, so it counts in your budget.</p>`;
 }
 function bindMoney() {
-  const mv = n => { const [y, m] = S.moneyMonth.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); S.moneyMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; ensureMonth(S.moneyMonth).then(render).catch(fail); };
+  const mv = n => { const [y, m] = S.moneyMonth.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); S.moneyMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; if (S.moneyMonth < S.txFrom) { S.moneyLoading = true; render(); } ensureMonth(S.moneyMonth).then(() => { S.moneyLoading = false; render(); }).catch(e => { S.moneyLoading = false; fail(e); }); };
   $("#mprev").onclick = () => mv(-1); $("#mnext").onclick = () => mv(1);
   $("#msetup").onclick = setupSheet;
   document.querySelectorAll("[data-mv]").forEach(b => b.onclick = () => { S.moneyView = b.dataset.mv; render(); window.scrollTo(0, 0); });
@@ -183,7 +184,7 @@ function txSheet(t, preset = {}, opts = {}) {
     return `<div class="between"><h2 class="h2">${opts.review ? "Check this expense" : isNew ? "Add money" : "Edit"}</h2>${opts.review ? `<span class="tiny muted">${opts.review}</span>` : ""}</div>
     ${opts.review ? '<p class="small muted" style="margin:4px 0 0">Read from your screenshot. Fix anything that looks wrong.</p>' : ""}
     <div class="seg">${[["expense", "Spent"], ["income", "Income"], ["saving", "Saved"], ["card_payment", "Card bill"]].map(([k, l]) => `<button type="button" data-ty="${k}" class="${st.type === k ? "on" : ""}">${l}</button>`).join("")}</div>
-    <div class="field"><label>Amount (RM)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="xa" value="${st.amount === "" || st.amount == null ? "" : Number(st.amount).toFixed(2)}" placeholder="0.00" style="font-size:20px;font-weight:600;height:46px"></div>
+    <div class="field"><label>Amount (RM)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="xa" value="${st.amount === "" || st.amount == null ? "" : Number(st.amount).toFixed(2)}" placeholder="0.00" style="font-size:19px;font-weight:600;height:46px"></div>
     ${catList.length ? `<div class="field"><label>Category</label>${chips(catList.map(c => [c.id, c.name]), st.category_id, "xc")}</div>` : ""}
     <div class="field"><label>${isCardPay ? "Paid from" : st.type === "income" ? "Into" : st.type === "saving" ? "From" : "Paid with"}</label>${chips(fromAcc.map(a => [a.id, a.name]), st.account_id, "xac")}</div>
     ${st.type === "saving" && savingsAccounts().length ? `<div class="field"><label>Into</label>${chips(savingsAccounts().map(a => [a.id, a.name]), st.to_account_id, "xto")}</div>` : ""}
@@ -294,7 +295,7 @@ function payBill(b) {
   const m = S.moneyView === "bills" || S.tab === "money" ? S.moneyMonth : today().slice(0, 7);
   if (S.tx.some(x => x.bill_id === b.id && x.bill_period === m)) { toast("Already marked paid for this month"); return; }
   let aid = b.account_id || S.settings.default_account_id;
-  openSheet(`<h2 class="h2">Paid ${esc(b.name)}</h2><p class="small muted" style="margin:4px 0 14px">This saves it as spending for ${MONL[Number(m.slice(5)) - 1]}.</p>
+  window.MD.openPop(`<h2 class="h2">Paid ${esc(b.name)}</h2><p class="small muted" style="margin:4px 0 14px">This saves it as spending for ${MONL[Number(m.slice(5)) - 1]}.</p>
     <div class="field"><label>Amount (RM)</label><input type="number" inputmode="decimal" step="0.01" id="pa" value="${b.amount ?? ""}" placeholder="0.00"></div>
     <div class="field"><label>Paid with</label>${chips(S.accounts.map(a => [a.id, a.name]), aid, "pac")}</div>
     <div class="field"><label>Date paid</label><input type="date" id="pd" value="${m === today().slice(0, 7) ? today() : billsFor(m).find(x => x.b.id === b.id)?.due || today()}"></div>
