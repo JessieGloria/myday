@@ -21,7 +21,7 @@
   }
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.45}
+html,body{margin:0;touch-action:pan-x pan-y;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.45}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer;border:none;background:none;padding:0}
 .serif{font-family:Fraunces,Georgia,serif;font-style:italic;font-weight:300}
@@ -153,3 +153,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--peri)}
 .tag{font-size:11px;letter-spacing:.32em;color:var(--peri);margin:4px 0 30px}
 .err{color:#C05050;font-size:13px;margin:8px 2px}
 .soon-card{text-align:center;padding:34px 20px}
+
+input,textarea,.selectable{-webkit-user-select:text;user-select:text}
+button,a,input,select,textarea{touch-action:manipulation}

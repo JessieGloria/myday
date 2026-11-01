@@ -3,6 +3,7 @@
 "use strict";
 const CFG = window.MYDAY_CONFIG;
 const SKEY = "myday.session";
+window.MD = { loaders: [], views: {}, binds: {} };
 
 /* ---------- small helpers ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -103,6 +104,7 @@ async function loadAll() {
   S.days = {}; days.forEach(d => S.days[d.date] = d);
   S.holidayRows = hols; S.holidays = {}; hols.forEach(h => S.holidays[h.date] = h);
   S.plans = plans; S.todos = todos; S.shopping = shop;
+  await Promise.all(window.MD.loaders.map(f => f()));
   S.loaded = true;
 }
 
@@ -169,10 +171,10 @@ function render() {
     loadAll().then(render).catch(e => { app.innerHTML = `<div class="login"><div class="brand">MY DAY</div><p class="err">${esc(e.message)}</p><button class="btn" id="retry">Try again</button></div>`; $("#retry").onclick = render; });
     return;
   }
-  const view = { today: viewToday, calendar: viewCalendar, money: () => viewSoon("Money", "Income, spending, savings, budgets, recurring bills, and screenshot-to-expense.", "Step 2"), goals: () => viewSoon("Goals", "Savings goals, wishlist, and life admin reminders.", "Step 3"), learn: () => viewSoon("Learn", "Your topics of the week, notes, and weekly streak.", "Step 3") }[S.tab]();
+  const view = (window.MD.views[S.tab] || { today: viewToday, calendar: viewCalendar, money: () => viewSoon("Money", "Income, spending, savings, budgets, recurring bills, and screenshot-to-expense.", "Step 2"), goals: () => viewSoon("Goals", "Savings goals, wishlist, and life admin reminders.", "Step 3"), learn: () => viewSoon("Learn", "Your topics of the week, notes, and weekly streak.", "Step 3") }[S.tab])();
   app.innerHTML = `<div class="wrap">${view}</div>${nav()}<button class="fab" id="fab" aria-label="Quick add">${I.plus}</button>`;
   bindCommon();
-  ({ today: bindToday, calendar: bindCalendar })[S.tab]?.();
+  (window.MD.binds[S.tab] || { today: bindToday, calendar: bindCalendar }[S.tab])?.();
 }
 
 function nav() {
@@ -216,7 +218,7 @@ function viewToday() {
   <div class="card status st-${lab.cls}"><div class="ic">${lab.icon}</div><div><div class="h2">${esc(lab.title)}</div><div class="small muted">${esc(lab.sub)}</div></div></div>${post}
   <div class="stats">
     <button class="stat" data-go="todo"><b>${todoLeft}</b><span class="tiny muted">to do today</span></button>
-    <button class="stat" data-go="buy"><b>${buyLeft}</b><span class="tiny muted">to buy</span></button>
+    <button class="stat" data-go="money"><b>RM${Math.round(window.MD.moneyToday ? window.MD.moneyToday() : 0)}</b><span class="tiny muted">spent today</span></button>
     <button class="stat" data-go="cal"><b>${lv.left}</b><span class="tiny muted">leave days left</span></button>
   </div>
   <div class="seg">${[["plan", "Plan"], ["todo", "To do"], ["buy", "To buy"]].map(([k, l]) => `<button data-tv="${k}" class="${S.todayView === k ? "on" : ""}">${l}</button>`).join("")}</div>
@@ -224,7 +226,7 @@ function viewToday() {
 }
 function bindToday() {
   document.querySelectorAll("[data-tv]").forEach(b => b.onclick = () => { S.todayView = b.dataset.tv; try { localStorage.setItem("myday.todayView", S.todayView); } catch (e) {} render(); });
-  document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { const g = b.dataset.go; if (g === "cal") { S.tab = "calendar"; } else { S.todayView = g; } render(); });
+  document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { const g = b.dataset.go; if (g === "cal") { S.tab = "calendar"; } else if (g === "money") { S.tab = "money"; } else { S.todayView = g; } render(); });
   ({ plan: bindPlan, todo: bindTodo, buy: bindBuy })[S.todayView]();
 }
 
@@ -362,7 +364,7 @@ function viewBuy() {
     ${byG.map(([g, a]) => `<div class="lbl">${esc(g)}</div><div class="list">${a.map(row).join("")}</div>`).join("")}
     ${!open.length ? '<div class="empty">Your list is empty.</div>' : ""}
     ${done.length ? `<div class="between"><div class="lbl">In the basket${total ? ` · RM ${total.toFixed(2)}` : ""}</div><button class="small" style="color:var(--peri)" id="clearb">Clear bought</button></div><div class="list">${done.map(row).join("")}</div>` : ""}
-    <p class="tiny faint" style="text-align:center;margin-top:14px">Prices you add here will go into Money once step 2 is ready.</p>`;
+    <p class="tiny faint" style="text-align:center;margin-top:14px">When you tick an item and add its price, it goes into Money as spending.</p>`;
 }
 function bindBuy() {
   document.querySelectorAll("[data-bg]").forEach(b => b.onclick = () => { buyGroup = b.dataset.bg; document.querySelectorAll("[data-bg]").forEach(x => x.classList.toggle("on", x === b)); });
@@ -373,12 +375,17 @@ function bindBuy() {
   };
   document.querySelectorAll("[data-bchk]").forEach(b => b.onclick = async () => {
     const x = S.shopping.find(y => y.id === b.dataset.bchk);
-    if (x.done_at) { try { Object.assign(x, await db.update("myday_shopping", x.id, { done_at: null, price: null })); render(); } catch (e) { fail(e); } return; }
+    if (x.done_at) { try { Object.assign(x, await db.update("myday_shopping", x.id, { done_at: null, price: null }));
+      const lt = (S.tx || []).find(t => t.shopping_id === x.id); if (lt) { await db.remove("myday_transactions", lt.id); S.tx = S.tx.filter(t => t !== lt); }
+      render(); } catch (e) { fail(e); } return; }
     openSheet(`<h2 class="h2">Bought ${esc(x.title)}</h2><p class="small muted" style="margin:4px 0 14px">Add the price if you like. You can skip it.</p>
       <div class="field"><label>Price (RM)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="bp" placeholder="0.00"></div>
       <div class="two"><button class="btn" id="bskip">Skip</button><button class="btn primary" id="bok">Save</button></div>`, () => {
       $("#bp").focus();
-      const go = async price => { try { Object.assign(x, await db.update("myday_shopping", x.id, { done_at: nowIso(), price })); closeSheet(); render(); } catch (e) { fail(e); } };
+      const go = async price => { try { Object.assign(x, await db.update("myday_shopping", x.id, { done_at: nowIso(), price }));
+        if (price && S.categories) { const c = S.categories.find(k => k.kind === "expense" && k.name.toLowerCase() === x.group_name.toLowerCase()) || S.categories.find(k => k.name === "Shopping");
+          S.tx.unshift(await db.insert("myday_transactions", { type: "expense", amount: price, date: today(), category_id: c?.id || null, account_id: S.settings.default_account_id, payee: x.title, source: "shopping", shopping_id: x.id })); }
+        closeSheet(); render(); if (price) toast("Saved in Money too"); } catch (e) { fail(e); } };
       $("#bskip").onclick = () => go(null);
       $("#bok").onclick = () => { const v = $("#bp").value; go(v === "" ? null : Math.round(Number(v) * 100) / 100); };
     });
@@ -481,7 +488,7 @@ function viewSoon(title, text, step) {
 function quickAdd() {
   openSheet(`<h2 class="h2" style="margin-bottom:14px">Quick add</h2><div class="qa">
     <button id="qp">${I.plan}Plan</button><button id="qt">${I.todo}To do</button><button id="qb">${I.cart}To buy</button>
-    <button class="soon" id="qe">${I.coin}Expense<span class="tiny muted">step 2</span></button><button class="soon" id="ql">${I.book}Topic<span class="tiny muted">step 3</span></button></div>`, () => {
+    <button id="qe">${I.coin}Money</button><button class="soon" id="ql">${I.book}Topic<span class="tiny muted">step 3</span></button></div>`, () => {
     $("#qp").onclick = () => planSheet(null, S.tab === "today" ? S.planDate : today());
     $("#qt").onclick = () => todoSheet(null);
     $("#qb").onclick = () => {
@@ -493,7 +500,7 @@ function quickAdd() {
           try { S.shopping.push(await db.insert("myday_shopping", { title: v, group_name: $("#qbg").value })); closeSheet(); S.tab = "today"; S.todayView = "buy"; render(); toast("Added to your list"); } catch (e) { fail(e); } };
       });
     };
-    $("#qe").onclick = () => toast("Expenses arrive in step 2");
+    $("#qe").onclick = () => window.MD.txSheet(null);
     $("#ql").onclick = () => toast("Learn arrives in step 3");
   });
 }
@@ -536,10 +543,14 @@ function settingsSheet() {
 }
 
 /* ---------- start ---------- */
+// Keep the app fixed: block pinch-zoom and double-tap zoom (iOS ignores the viewport setting on its own)
+["gesturestart", "gesturechange", "gestureend"].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
+document.addEventListener("touchmove", e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+// double-tap zoom is turned off in styles.css (touch-action: manipulation)
 // refresh "today" when the app comes back to the front on a new day
 let lastDay = today();
 document.addEventListener("visibilitychange", () => { if (!document.hidden && session && S.loaded) { if (today() !== lastDay) { lastDay = today(); S.planDate = lastDay; } loadAll().then(render).catch(() => {}); } });
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
-render();
-window.__myday = S;
+window.MD = Object.assign(window.MD, { $, esc, pad, ymd, parse, addDays, today, fmtShort, relDay, nowIso, I, S, db, rest, render, openSheet, closeSheet, toast, fail, CFG });
+window.addEventListener("DOMContentLoaded", render);
 })();
