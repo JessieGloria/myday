@@ -25,8 +25,25 @@ async function loadMoney() {
   S.savingTx = await db.list("myday_transactions", "type=eq.saving&select=id,amount,to_account_id,date");
   const from = monthsBack(3), cards = acc.filter(a => a.kind === "card").map(a => a.id);
   const cardQ = cards.length ? `,account_id.in.(${cards}),to_account_id.in.(${cards})` : "";
+  S.payDates = await db.list("myday_pay_dates", "order=date");
   S.tx = await db.list("myday_transactions", `or=(date.gte.${from},needs_review.is.true${cardQ})&order=date.desc,time.desc.nullslast,created_at.desc`);
   S.txFrom = from.slice(0, 7);
+  await autoCharge();
+}
+// card subscriptions and installments: add them by themselves once their date arrives
+let charging = false;
+async function autoCharge() {
+  if (charging) return; charging = true;
+  try { await doAutoCharge(); } finally { charging = false; }
+}
+async function doAutoCharge() {
+  const m = today().slice(0, 7), list = billsFor(m).filter(x => x.b.auto_pay && !x.paid && x.due <= today() && (!x.b.auto_from || x.due >= x.b.auto_from));
+  for (const x of list) {
+    try { const n = instNo(x.b, m);
+      S.tx.unshift(await db.insert("myday_transactions", { type: "expense", amount: Number(x.b.amount), date: x.due, category_id: x.b.category_id, account_id: x.b.account_id, payee: x.b.name, note: n ? `Installment ${n} of ${x.b.installments_total}` : null, source: "bill", bill_id: x.b.id, bill_period: m }));
+    } catch (e) { console.warn("auto charge failed", e); }
+  }
+  if (list.length) S.tx.sort((a, b) => b.date.localeCompare(a.date));
 }
 async function ensureMonth(m) {
   if (m >= S.txFrom) return;
@@ -67,10 +84,18 @@ function accBalance(a) {
 function cardOwed() {
   return S.accounts.filter(a => a.kind === "card").map(a => ({ a, owed: sum(S.tx.filter(t => t.type === "expense" && t.account_id === a.id)) - sum(S.tx.filter(t => t.type === "card_payment" && t.to_account_id === a.id)) }));
 }
+// installments: which number this month is (e.g. 6 of 36), or null when outside the plan
+function instNo(b, m) {
+  if (!b.installments_total || !b.installment_first) return null;
+  const [fy, fm] = b.installment_first.split("-").map(Number), [y, mo] = m.split("-").map(Number);
+  return (y - fy) * 12 + (mo - fm) + 1;
+}
+const inPlan = (b, m) => { const n = instNo(b, m); return n === null || (n >= 1 && n <= b.installments_total); };
 function billsFor(m) {
   const [y, mo] = m.split("-").map(Number), dim = new Date(y, mo, 0).getDate(), t = today();
-  return S.bills.filter(b => b.frequency === "monthly" || b.due_month === mo).map(b => {
-    const due = `${m}-${pad(Math.min(b.due_day, dim))}`;
+  return S.bills.filter(b => (b.frequency === "monthly" || b.due_month === mo) && inPlan(b, m)).map(b => {
+    const pd = b.due_on_payday ? (S.payDates || []).find(p => p.date.startsWith(m))?.date : null;
+    const due = pd || `${m}-${pad(Math.min(b.due_day, dim))}`;
     const paid = S.tx.find(x => x.bill_id === b.id && x.bill_period === m && x.type === "expense");
     const pass = S.tx.find(x => x.bill_id === b.id && x.bill_period === m && x.type === "passthrough");
     const coll = (b.people || []).map(name => ({ name, tx: S.tx.find(x => x.bill_id === b.id && x.bill_period === m && x.type === "collect" && x.payee === name) }));
@@ -170,11 +195,11 @@ function viewBills() {
   return `<div class="card between"><div><div class="small muted">Your bills this month</div><div class="h2">${rm(paid)} paid <span class="muted" style="font-weight:400">of ~${rm(total)}</span></div></div><button class="btn sun" id="addbill">+ Bill</button></div>
     <div class="lbl">Due this month</div>
     ${list.length ? list.map(x => `<div class="card billcard"><div class="row"><button class="grow" style="text-align:left;flex:1;min-width:0" data-bill="${x.b.id}"><div class="h2" style="font-size:14px">${esc(x.b.name)}${(x.b.people || []).length ? ` <span class="pill">shared</span>` : ""}</div>
-      <div class="tiny muted">${x.paid ? `paid ${rm(Number(x.paid.amount) + Number(x.pass?.amount || 0))} on ${fmtShort(x.paid.date)}` : `${x.b.amount ? rm(x.b.amount) : "Amount varies"} · due ${fmtShort(x.due)}`}</div></button>
-      ${x.paid ? billPill(x) : `<button class="btn" style="height:34px" data-paybill="${x.b.id}">Paid</button>`}</div>
+      <div class="tiny muted">${x.paid ? `${x.b.auto_pay ? "charged" : "paid"} ${rm(Number(x.paid.amount) + Number(x.pass?.amount || 0))} on ${fmtShort(x.paid.date)}` : `${x.b.amount ? rm(x.b.amount) : "Amount varies"} · ${x.b.auto_pay ? "charged to " + esc(acc(x.b.account_id)?.name || "card") : x.b.due_on_payday ? "due on pay day" : "due"} ${fmtShort(x.due)}`}${instNo(x.b, S.moneyMonth) ? ` · ${instNo(x.b, S.moneyMonth)} of ${x.b.installments_total}` : ""}</div></button>
+      ${x.paid ? billPill(x) : x.b.auto_pay ? `<span class="pill">Auto</span>` : `<button class="btn" style="height:34px" data-paybill="${x.b.id}">Paid</button>`}</div>
       ${(x.b.people || []).length ? sharedBlock(x) : ""}</div>`).join("") : '<div class="empty">No bills yet. Add the ones you pay every month, like your phone plan or rent.</div>'}
     ${others.length ? `<div class="lbl">Yearly, not due this month</div><div class="list">${others.map(b => `<button class="item" style="width:100%;text-align:left" data-bill="${b.id}"><div class="grow"><div class="title">${esc(b.name)}</div><div class="tiny muted">${MONL[(b.due_month || 1) - 1]} ${b.due_day}${b.amount ? " · " + rm(b.amount) : ""}</div></div></button>`).join("")}</div>` : ""}
-    <p class="tiny faint" style="text-align:center;margin-top:14px">Tapping Paid saves the bill as spending, so it counts in your budget.</p>`;
+    <p class="tiny faint" style="text-align:center;margin-top:14px">Tapping Paid saves the bill as spending. "Auto" ones are added by themselves on their date and go onto your card.</p>`;
 }
 async function toggleCollect(billId, name) {
   const b = S.bills.find(x => x.id === billId), m = S.moneyMonth;
@@ -315,6 +340,10 @@ function billSheet(b) {
     <div class="field" id="bmw" style="${fr === "yearly" ? "" : "display:none"}"><label>Month</label><select id="bm">${MONL.map((n, i) => `<option value="${i + 1}" ${b.due_month === i + 1 ? "selected" : ""}>${n}</option>`).join("")}</select></div>
     <div class="field"><label>Category</label>${chips(expCats().map(c => [c.id, c.name]), cid, "bc")}</div>
     <div class="field"><label>Usually paid with</label>${chips(S.accounts.filter(a => a.kind !== "savings").map(a => [a.id, a.name]), aid, "bac")}</div>
+    <label class="row small" style="margin:0 2px 8px"><input type="checkbox" id="bpay" ${b.due_on_payday ? "checked" : ""}> Due on my pay day (uses the day above if a month has no pay date)</label>
+    <label class="row small" style="margin:0 2px 12px"><input type="checkbox" id="bauto" ${b.auto_pay ? "checked" : ""}> Charged automatically (add it by itself on the due date)</label>
+    <div class="field"><label>Installments: total number (optional)</label><input type="number" min="1" id="bit" value="${b.installments_total ?? ""}" placeholder="36"></div>
+    <div class="field"><label>Month of installment 1</label><input type="month" id="bif" value="${(b.installment_first || "").slice(0, 7)}"></div>
     <div class="lbl">Shared with others?</div>
     <div class="field"><label>People who pay you their share (one per line)</label><textarea id="bpp" rows="4" placeholder="Leave empty if it's only yours">${esc((b.people || []).join("\n"))}</textarea></div>
     <div class="field"><label>Each person's share, including yours (RM)</label><input type="number" inputmode="decimal" step="0.01" id="bsh" value="${b.share_amount ?? ""}" placeholder="480"></div>
@@ -327,7 +356,8 @@ function billSheet(b) {
     $("#bsave").onclick = async () => {
       const people = $("#bpp").value.split("\n").map(x => x.trim()).filter(Boolean), sh = $("#bsh").value === "" ? null : Number($("#bsh").value);
       if (people.length && !(sh > 0)) { $("#berr").textContent = "Add each person's share."; return; }
-      const o = { people, share_amount: people.length ? sh : null, name: $("#bn").value.trim(), amount: $("#ba").value === "" ? (people.length ? sh * (people.length + 1) : null) : Number($("#ba").value), due_day: Math.max(1, Math.min(31, Number($("#bd").value) || 1)), frequency: fr, due_month: fr === "yearly" ? Number($("#bm").value) : null, category_id: cid, account_id: aid };
+      const autoOn = $("#bauto").checked, itot = Number($("#bit").value) || null, ifirst = $("#bif").value ? $("#bif").value + "-01" : null;
+      const o = { due_on_payday: $("#bpay").checked, auto_pay: autoOn, auto_from: autoOn ? (b.auto_from || today().slice(0, 7) + "-01") : null, installments_total: itot, installment_first: itot ? ifirst : null, people, share_amount: people.length ? sh : null, name: $("#bn").value.trim(), amount: $("#ba").value === "" ? (people.length ? sh * (people.length + 1) : null) : Number($("#ba").value), due_day: Math.max(1, Math.min(31, Number($("#bd").value) || 1)), frequency: fr, due_month: fr === "yearly" ? Number($("#bm").value) : null, category_id: cid, account_id: aid };
       if (!o.name) { $("#berr").textContent = "Give the bill a name."; return; }
       try { if (isNew) S.bills.push(await db.insert("myday_bills", o)); else Object.assign(b, await db.update("myday_bills", b.id, o));
         S.bills.sort((x, y) => x.due_day - y.due_day); closeSheet(); render(); toast(isNew ? "Bill added" : "Bill saved"); } catch (e) { fail(e); }
@@ -403,7 +433,14 @@ function setupSheet() {
     <button class="addline" id="addi">+ Add income category</button>
     <div class="lbl">Salary reminder</div>
     <div class="field"><label>Start asking "Has your salary come in?" from day</label><input type="number" min="1" max="31" id="sfd" value="${S.settings.salary_from_day || 20}"></div>
-    <button class="btn block" id="sfdsave">Save</button>`, sh => {
+    <button class="btn block" id="sfdsave">Save</button>
+    <div class="lbl">Pay dates</div>
+    <p class="tiny muted" style="margin:0 2px 8px">The salary question shows on these days. Months without a date use the day above.</p>
+    <div class="list">${(S.payDates || []).filter(p => p.date >= today().slice(0, 4) + "-01-01").map(p => `<div class="item"><div class="grow small">${fmtShort(p.date)} ${p.date.slice(0, 4)}</div><button class="x" data-pdx="${p.id}" aria-label="Remove">×</button></div>`).join("") || '<div class="item small muted">No pay dates yet</div>'}</div>
+    <input type="date" id="pdnew" style="margin-top:8px"><button class="btn block" id="pdadd" style="margin-top:8px">+ Add pay date</button>`, sh => {
+    sh.querySelectorAll("[data-pdx]").forEach(b => b.onclick = async () => { try { await db.remove("myday_pay_dates", b.dataset.pdx); S.payDates = S.payDates.filter(x => x.id !== b.dataset.pdx); setupSheet(); render(); } catch (e) { fail(e); } });
+    $("#pdadd").onclick = async () => { const d = $("#pdnew").value; if (!d) { window.ART.nudge($("#pdnew")); return; }
+      try { S.payDates.push(await db.insert("myday_pay_dates", { date: d })); S.payDates.sort((a, b) => a.date.localeCompare(b.date)); setupSheet(); render(); toast("Pay date added"); } catch (e) { fail(e); } };
     $("#sfdsave").onclick = async () => { try { S.settings = (await rest("PATCH", `myday_settings?user_id=eq.${S.settings.user_id}`, { salary_from_day: Math.max(1, Math.min(31, Number($("#sfd").value) || 20)) }))[0]; toast("Saved"); render(); } catch (e) { fail(e); } };
     sh.querySelectorAll("[data-rn]").forEach(inp => inp.onchange = async () => { const id = inp.dataset.rn, v = inp.value.trim(); if (!v) return;
       try { Object.assign(cat(id), await db.update("myday_categories", id, { name: v })); toast("Renamed"); } catch (e) { fail(e); } });
@@ -422,10 +459,14 @@ const salaryCat = () => S.categories.find(c => c.kind === "income" && /salary|ga
 const lastSalary = () => S.tx.find(t => t.type === "income" && t.category_id === salaryCat()?.id);
 const snoozed = k => { try { return localStorage.getItem("myday.snooze." + k) === today(); } catch (e) { return false; } };
 const snooze = k => { try { localStorage.setItem("myday.snooze." + k, today()); } catch (e) {} };
+const payDayOf = m => (S.payDates || []).find(p => p.date.startsWith(m))?.date || null;
+window.MD.isPayDay = ds => (S.payDates || []).some(p => p.date === ds);
+const salaryIn = m => S.tx.some(t => t.type === "income" && t.date.startsWith(m) && t.category_id === salaryCat()?.id);
 function salaryDue() {
-  const m = today().slice(0, 7), day = Number(today().slice(8));
-  if (day < (S.settings.salary_from_day || 20) || snoozed("salary")) return false;
-  return !S.tx.some(t => t.type === "income" && t.date.startsWith(m) && t.category_id === salaryCat()?.id);
+  const m = today().slice(0, 7), day = Number(today().slice(8)), pd = payDayOf(m);
+  if (snoozed("salary")) return false;
+  if (pd ? today() < pd : day < (S.settings.salary_from_day || 20)) return false;
+  return !salaryIn(m);
 }
 function rentWaiting() {
   const m = today().slice(0, 7);
@@ -441,6 +482,8 @@ function cardsToPay() {
 }
 window.MD.extraDue = () => {
   const out = [];
+  { const m = today().slice(0, 7), pd = payDayOf(m), dd = pd ? Math.round((parse(pd) - parse(today())) / 864e5) : null;
+    if (pd && dd > 0 && dd <= 7 && !salaryIn(m)) out.push([pd, `<div class="item duecard"><span class="dueic" style="background:var(--sunbg)">${I.coin}</span><div class="grow"><div class="title">Pay day ${dd === 1 ? "tomorrow" : `in ${dd} days`}</div><div class="tiny muted">${fmtShort(pd)}</div></div><span class="pill warn">${dd}d</span></div>`]); }
   if (salaryDue()) { const ls = lastSalary();
     out.push(["0", `<div class="item duecard"><span class="dueic" style="background:var(--sagebg)">${I.coin}</span><div class="grow"><div class="title">Has your salary come in?</div><div class="tiny muted">${ls ? `Last time ${rm(ls.amount)} on ${fmtShort(ls.date)}` : "Add it once it's in your account"}</div></div>
       <div class="duebtns"><button class="btn sun" data-salary="1">Add</button><button class="small muted" data-snooze="salary">Not yet</button></div></div>`]); }

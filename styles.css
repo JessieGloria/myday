@@ -451,3 +451,4 @@ body{background:transparent!important}
 .acctpick{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .acctpick button{display:flex;align-items:center;justify-content:center;gap:8px;height:52px;border-radius:16px;background:var(--card);border:1px solid var(--line);font-weight:600;font-size:14px}
 .acctpick button.on{border-color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy)}
+.paydot{display:inline-block;width:7px!important;height:7px!important;border-radius:50%;background:#F6D86B!important;box-shadow:0 0 0 1.5px #E5B93A}

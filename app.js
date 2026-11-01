@@ -590,7 +590,7 @@ function viewCalendar() {
   for (let d = 1; d <= dim; d++) {
     const ds = `${y}-${pad(m)}-${pad(d)}`, info = dayInfo(ds), hasPlan = S.plans.some(p => p.date === ds);
     const k = info.kind === "off" && info.override ? "off-x" : info.kind;
-    cells += `<button data-day="${ds}" class="k-${k} ${ds === t ? "today" : ""}"><div class="num">${d}</div><div class="dots"><i style="background:${KCOL[info.kind]}"></i>${hasPlan ? '<i style="background:var(--rose)"></i>' : ""}</div></button>`;
+    cells += `<button data-day="${ds}" class="k-${k} ${ds === t ? "today" : ""}"><div class="num">${d}</div><div class="dots"><i style="background:${KCOL[info.kind]}"></i>${hasPlan ? '<i style="background:var(--rose)"></i>' : ""}${window.MD.isPayDay && window.MD.isPayDay(ds) ? '<i class="paydot"></i>' : ""}</div></button>`;
   }
   const lv = leaveSummary();
   const modes = [["oncall", "On-call"], ["leave", "Leave"], ["off", "Off"], ["work", "Work"], ["reset", "Reset"]];
@@ -603,13 +603,14 @@ function viewCalendar() {
     if (info.kind === "oncall") up.push([ds, "On-call", "navy", "8am → 8am"]);
     if (info.kind === "leave") up.push([ds, "Annual leave", "sage", "Leave"]);
     if (info.kind === "holiday") up.push([ds, info.holiday, "warn", "Public holiday"]);
+    if (window.MD.isPayDay && window.MD.isPayDay(ds)) up.push([ds, "Pay day", "warn", "Salary"]);
     S.plans.filter(p => p.date === ds).forEach(p => up.push([ds, p.title, "rose", p.start_time ? t12(hhmm(p.start_time)) : "Plan"]));
   }
   return `<div class="top"><div><h1 class="h1">${MONL[m - 1]} <span class="muted" style="font-weight:300">${y}</span></h1><div class="small muted">Your shifts and plans</div></div>
     <div class="row"><button class="iconbtn" id="cprev" aria-label="Previous month">${I.left}</button><button class="iconbtn" id="cnext" aria-label="Next month">${I.right}</button><button class="iconbtn" id="gear" aria-label="Annual leave settings">${I.gear}</button></div></div>
     ${S.paint ? paint : `<button class="btn block" id="proster" style="margin-bottom:10px;height:auto;padding:6px 14px;display:flex;align-items:center;gap:8px;justify-content:center">${window.ART.moon(34)}<span>Edit roster: on-call, leave, off days</span></button>`}
     <div class="cal" style="margin-top:10px"><div class="wd">${["M", "T", "W", "T", "F", "S", "S"].map(x => `<div>${x}</div>`).join("")}</div><div class="grid">${cells}</div>
-    <div class="legend"><span><i style="background:var(--peri)"></i>Work</span><span><i style="background:var(--navy)"></i>On-call</span><span><i style="background:var(--sun)"></i>Off / holiday</span><span><i style="background:var(--sage)"></i>Leave</span><span><i style="background:var(--rose)"></i>Plan</span></div></div>
+    <div class="legend"><span><i style="background:var(--peri)"></i>Work</span><span><i style="background:var(--navy)"></i>On-call</span><span><i style="background:var(--sun)"></i>Off / holiday</span><span><i style="background:var(--sage)"></i>Leave</span><span><i style="background:var(--rose)"></i>Plan</span><span><i class="paydot" style="margin-right:5px"></i>Pay day</span></div></div>
     <button class="card leave between" id="leavecard" style="margin-top:12px;width:100%;text-align:left"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">ANNUAL LEAVE ${lv.cy}</div>
       <div style="font-size:25px;font-weight:500">${lv.left} <span style="font-size:13px;font-weight:400">days left</span></div>
       <div class="small muted">${lv.taken} taken${lv.booked ? ` · ${lv.booked} booked ahead` : ""} · ${lv.next} available in ${lv.cy + 1}</div></div>
@@ -701,7 +702,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 17 (rent accounts)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 20 (loans on pay day)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);
