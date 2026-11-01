@@ -221,10 +221,25 @@ function viewToday() {
     <button class="stat" data-go="money"><b>RM${Math.round(window.MD.moneyToday ? window.MD.moneyToday() : 0)}</b><span class="tiny muted">spent today</span></button>
     <button class="stat" data-go="cal"><b>${lv.left}</b><span class="tiny muted">leave days left</span></button>
   </div>
+  ${dueSoon()}
   <div class="seg">${[["plan", "Plan"], ["todo", "To do"], ["buy", "To buy"]].map(([k, l]) => `<button data-tv="${k}" class="${S.todayView === k ? "on" : ""}">${l}</button>`).join("")}</div>
   <div id="tv">${{ plan: viewPlan, todo: viewTodo, buy: viewBuy }[S.todayView]()}</div>`;
 }
+function dueSoon() {
+  const items = [];
+  (window.MD.remindersDueSoon ? window.MD.remindersDueSoon() : []).forEach(r => { const d = Math.round((parse(r.due_date) - parse(today())) / 864e5);
+    items.push([r.due_date, `<button class="item" style="width:100%;text-align:left" data-dsrem="${r.id}"><div class="grow"><div class="title">${esc(r.name)}</div><div class="tiny muted">Life admin</div></div><span class="pill ${d < 0 ? "rose" : "warn"}">${d < 0 ? -d + "d late" : d === 0 ? "Today" : d === 1 ? "Tomorrow" : "in " + d + " days"}</span></button>`]); });
+  (window.MD.billsDueSoon ? window.MD.billsDueSoon() : []).forEach(x => items.push([x.due, `<button class="item" style="width:100%;text-align:left" data-dsbill="1"><div class="grow"><div class="title">${esc(x.b.name)}</div><div class="tiny muted">Bill${x.b.amount ? " · RM " + Number(x.b.amount).toFixed(2) : ""}</div></div><span class="pill ${x.status === "late" ? "rose" : "warn"}">${x.days < 0 ? -x.days + "d late" : x.days === 0 ? "Today" : x.days === 1 ? "Tomorrow" : "in " + x.days + " days"}</span></button>`]));
+  items.sort((a, b) => a[0].localeCompare(b[0]));
+  const recap = new Date().getDate() <= 7 && window.MD.recapSheet && S.tx && S.tx.some(t => t.date.startsWith(window.MD.lastMonth()));
+  const lm = recap ? ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][Number(window.MD.lastMonth().slice(5)) - 1] : "";
+  return (items.length ? `<div class="lbl">Due soon</div><div class="list">${items.map(x => x[1]).join("")}</div>` : "")
+    + (recap ? `<button class="card between" id="recapcard" style="width:100%;text-align:left;margin-top:10px;background:var(--lav);border:none"><div><div class="h2">Your ${lm} recap</div><div class="small muted">Money, days, and what you learned</div></div>${I.right.replace("<svg", '<svg width="20" height="20"')}</button>` : "");
+}
 function bindToday() {
+  document.querySelectorAll("[data-dsrem]").forEach(b => b.onclick = () => window.MD.remSheet(S.reminders.find(r => r.id === b.dataset.dsrem)));
+  document.querySelectorAll("[data-dsbill]").forEach(b => b.onclick = () => { S.tab = "money"; S.moneyView = "bills"; S.moneyMonth = today().slice(0, 7); render(); window.scrollTo(0, 0); });
+  const rc = $("#recapcard"); if (rc) rc.onclick = () => window.MD.recapSheet();
   document.querySelectorAll("[data-tv]").forEach(b => b.onclick = () => { S.todayView = b.dataset.tv; try { localStorage.setItem("myday.todayView", S.todayView); } catch (e) {} render(); });
   document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { const g = b.dataset.go; if (g === "cal") { S.tab = "calendar"; } else if (g === "money") { S.tab = "money"; } else { S.todayView = g; } render(); });
   ({ plan: bindPlan, todo: bindTodo, buy: bindBuy })[S.todayView]();
@@ -380,7 +395,7 @@ function bindBuy() {
       render(); } catch (e) { fail(e); } return; }
     openSheet(`<h2 class="h2">Bought ${esc(x.title)}</h2><p class="small muted" style="margin:4px 0 14px">Add the price if you like. You can skip it.</p>
       <div class="field"><label>Price (RM)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="bp" placeholder="0.00"></div>
-      <div class="two"><button class="btn" id="bskip">Skip</button><button class="btn primary" id="bok">Save</button></div>`, () => {
+      <div class="btnrow"><button class="btn" id="bskip">Skip</button><button class="btn primary" id="bok">Save</button></div>`, () => {
       $("#bp").focus();
       const go = async price => { try { Object.assign(x, await db.update("myday_shopping", x.id, { done_at: nowIso(), price }));
         if (price && S.categories) { const c = S.categories.find(k => k.kind === "expense" && k.name.toLowerCase() === x.group_name.toLowerCase()) || S.categories.find(k => k.name === "Shopping");
@@ -468,7 +483,7 @@ function daySheet(ds) {
     ${info.override ? '<button class="addline" id="dreset">Reset to normal</button>' : ""}
     <div class="lbl">Plans</div>
     ${plans.length ? `<div class="list">${plans.map(p => `<button class="item" style="width:100%;text-align:left" data-p="${p.id}"><div class="grow">${esc(p.title)}</div><span class="small muted">${p.start_time ? t12(hhmm(p.start_time)) : ""}</span></button>`).join("")}</div>` : '<div class="small muted" style="padding:0 2px">No plans yet.</div>'}
-    <div class="two" style="margin-top:14px"><button class="btn" id="dplan">+ Add plan</button><button class="btn primary" id="dopen">Open in Today</button></div>`, sh => {
+    <div class="btnrow" style="margin-top:14px"><button class="btn" id="dplan">+ Add plan</button><button class="btn primary" id="dopen">Open in Today</button></div>`, sh => {
     sh.querySelectorAll("[data-k]").forEach(b => b.onclick = async () => { try { await setDayKind(ds, b.dataset.k); closeSheet(); render(); toast("Day updated"); } catch (e) { fail(e); } });
     const r = $("#dreset"); if (r) r.onclick = async () => { try { await setDayKind(ds, null); closeSheet(); render(); } catch (e) { fail(e); } };
     sh.querySelectorAll("[data-p]").forEach(b => b.onclick = () => planSheet(S.plans.find(p => p.id === b.dataset.p)));
@@ -488,7 +503,7 @@ function viewSoon(title, text, step) {
 function quickAdd() {
   openSheet(`<h2 class="h2" style="margin-bottom:14px">Quick add</h2><div class="qa">
     <button id="qp">${I.plan}Plan</button><button id="qt">${I.todo}To do</button><button id="qb">${I.cart}To buy</button>
-    <button id="qe">${I.coin}Money</button><button class="soon" id="ql">${I.book}Topic<span class="tiny muted">step 3</span></button></div>`, () => {
+    <button id="qe">${I.coin}Money</button><button id="ql">${I.book}Topic</button><button id="qr">${I.cal}Reminder</button></div>`, () => {
     $("#qp").onclick = () => planSheet(null, S.tab === "today" ? S.planDate : today());
     $("#qt").onclick = () => todoSheet(null);
     $("#qb").onclick = () => {
@@ -501,7 +516,8 @@ function quickAdd() {
       });
     };
     $("#qe").onclick = () => window.MD.txSheet(null);
-    $("#ql").onclick = () => toast("Learn arrives in step 3");
+    $("#ql").onclick = () => window.MD.topicQuickAdd();
+    $("#qr").onclick = () => window.MD.remSheet(null);
   });
 }
 
@@ -523,6 +539,10 @@ function settingsSheet() {
     <div class="two" style="margin-top:10px"><input type="date" id="hd"><input type="text" id="hn" placeholder="Holiday name"></div>
     <button class="btn block" id="hadd" style="margin-top:8px">+ Add holiday</button>
     <p class="tiny muted" style="margin:8px 2px">Holiday dates can shift (Hari Raya, replacement days). Fix any date here.</p>
+    <div class="lbl">Recap and backup</div>
+    <button class="btn block" id="srecap" style="margin-bottom:8px">Monthly recap</button>
+    <button class="btn block" id="sexcsv" style="margin-bottom:8px">Download money as spreadsheet (CSV)</button>
+    <button class="btn block" id="sexall">Download full backup</button>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>`, sh => {
     let wd = [...st.work_days];
@@ -538,6 +558,9 @@ function settingsSheet() {
       const d = $("#hd").value, n = $("#hn").value.trim(); if (!d || !n) { toast("Add a date and a name"); return; }
       try { const h = await db.insert("myday_holidays", { date: d, name: n }); S.holidayRows.push(h); S.holidayRows.sort((a, b) => a.date.localeCompare(b.date)); S.holidays[d] = h; settingsSheet(); render(); } catch (e) { fail(e); }
     };
+    $("#srecap").onclick = () => window.MD.recapSheet();
+    $("#sexcsv").onclick = () => window.MD.exportMoneyCsv();
+    $("#sexall").onclick = () => window.MD.exportAll();
     $("#sout").onclick = () => { closeSheet(); signOut(); };
   });
 }
@@ -551,6 +574,6 @@ document.addEventListener("touchmove", e => { if (e.touches && e.touches.length 
 let lastDay = today();
 document.addEventListener("visibilitychange", () => { if (!document.hidden && session && S.loaded) { if (today() !== lastDay) { lastDay = today(); S.planDate = lastDay; } loadAll().then(render).catch(() => {}); } });
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
-window.MD = Object.assign(window.MD, { $, esc, pad, ymd, parse, addDays, today, fmtShort, relDay, nowIso, I, S, db, rest, render, openSheet, closeSheet, toast, fail, CFG });
+window.MD = Object.assign(window.MD, { dayInfo, $, esc, pad, ymd, parse, addDays, today, fmtShort, relDay, nowIso, I, S, db, rest, render, openSheet, closeSheet, toast, fail, CFG });
 window.addEventListener("DOMContentLoaded", render);
 })();

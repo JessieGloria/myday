@@ -68,7 +68,7 @@ function txRow(t) {
   const c = cat(t.category_id), a = acc(t.account_id);
   const sign = t.type === "income" ? "+" : t.type === "expense" ? "−" : "→";
   const col = t.type === "income" ? "color:var(--sageink)" : t.type === "saving" || t.type === "card_payment" ? "color:var(--sunink)" : "";
-  const title = t.type === "card_payment" ? `Paid ${acc(t.to_account_id)?.name || "card"}` : t.type === "saving" ? (t.note || "Savings") : (t.payee || c?.name || "Expense");
+  const title = t.type === "card_payment" ? `Paid ${acc(t.to_account_id)?.name || "card"}` : t.type === "saving" ? ((S.goals || []).find(g => g.id === t.goal_id)?.name || t.note || "Savings") : (t.payee || c?.name || "Expense");
   const sub = [t.type === "saving" ? "Saved" : c?.name, a?.name, t.time ? t.time.slice(0, 5) : ""].filter(Boolean).join(" · ");
   return `<button class="item" style="width:100%;text-align:left" data-tx="${t.id}">
     <span style="width:10px;height:10px;border-radius:50%;flex:none;background:${c ? CCOL[c.color] : "var(--lav2)"}"></span>
@@ -110,7 +110,7 @@ function viewOverview() {
   ${owed.map(x => `<div class="card between" style="margin-top:10px"><div><div class="small muted">${esc(x.a.name)}</div><div class="h2">${rm(x.owed)} <span class="small muted" style="font-weight:400">owed</span></div></div><button class="btn" data-paycard="${x.a.id}">Pay card</button></div>`).join("")}
   ${bills.length ? `<div class="between"><div class="lbl">Bills due</div><button class="small" style="color:var(--peri)" data-mv="bills">See all</button></div>
     <div class="list">${bills.slice(0, 4).map(x => `<button class="item" style="width:100%;text-align:left" data-bill="${x.b.id}"><div class="grow"><div class="title">${esc(x.b.name)}</div><div class="tiny muted">${x.b.amount ? rm(x.b.amount) : "Amount varies"} · due ${fmtShort(x.due)}</div></div>${billPill(x)}</button>`).join("")}</div>` : ""}
-  <div class="between"><div class="lbl">Spending by category</div><button class="small" style="color:var(--peri)" id="mbud">Budgets</button></div>
+  <div class="between"><div class="lbl">Spending by category</div><span><button class="small" style="color:var(--peri);margin-right:12px" id="mrecap">Recap</button><button class="small" style="color:var(--peri)" id="mbud">Budgets</button></span></div>
   ${cats.length || unc ? `<div class="card">${cats.map(x => `<div style="margin:6px 0 12px"><div class="between small"><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${CCOL[x.c.color]};margin-right:6px"></span>${esc(x.c.name)}</span><span>${rm(x.spent)}${x.budget ? `<span class="muted"> / ${rm0(x.budget)}</span>` : ""}</span></div>${bar(x.spent, x.budget)}</div>`).join("")}
     ${unc ? `<div class="between small" style="margin:6px 0"><span class="muted">No category yet</span><span>${rm(unc)}</span></div>` : ""}</div>` : '<div class="empty">No spending yet this month.</div>'}
   <div class="between"><div class="lbl">Recent</div>${recent.length ? '<button class="small" style="color:var(--peri)" data-mv="history">See all</button>' : ""}</div>
@@ -144,6 +144,7 @@ function bindMoney() {
   document.querySelectorAll("[data-paycard]").forEach(b => b.onclick = () => txSheet(null, { type: "card_payment", to_account_id: b.dataset.paycard, amount: cardOwed().find(x => x.a.id === b.dataset.paycard)?.owed }));
   const r = $("#mreview"); if (r) r.onclick = nextReview;
   const bu = $("#mbud"); if (bu) bu.onclick = budgetSheet;
+  const rc = $("#mrecap"); if (rc) rc.onclick = () => window.MD.recapSheet(S.moneyMonth < today().slice(0, 7) ? S.moneyMonth : window.MD.lastMonth());
   const ab = $("#addbill"); if (ab) ab.onclick = () => billSheet(null);
 }
 
@@ -160,13 +161,14 @@ function txSheet(t, preset = {}, opts = {}) {
     return `<div class="between"><h2 class="h2">${opts.review ? "Check this expense" : isNew ? "Add money" : "Edit"}</h2>${opts.review ? `<span class="tiny muted">${opts.review}</span>` : ""}</div>
     ${opts.review ? '<p class="small muted" style="margin:4px 0 0">Read from your screenshot. Fix anything that looks wrong.</p>' : ""}
     <div class="seg">${[["expense", "Spent"], ["income", "Income"], ["saving", "Saved"], ["card_payment", "Card bill"]].map(([k, l]) => `<button type="button" data-ty="${k}" class="${st.type === k ? "on" : ""}">${l}</button>`).join("")}</div>
-    <div class="field"><label>Amount (RM)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="xa" value="${st.amount === "" || st.amount == null ? "" : Number(st.amount).toFixed(2)}" placeholder="0.00" style="font-size:26px;font-weight:600;padding:10px 14px"></div>
+    <div class="field"><label>Amount (RM)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="xa" value="${st.amount === "" || st.amount == null ? "" : Number(st.amount).toFixed(2)}" placeholder="0.00" style="font-size:20px;font-weight:600;height:46px"></div>
     ${catList.length ? `<div class="field"><label>Category</label>${chips(catList.map(c => [c.id, c.name]), st.category_id, "xc")}</div>` : ""}
     <div class="field"><label>${isCardPay ? "Paid from" : st.type === "income" ? "Into" : st.type === "saving" ? "From" : "Paid with"}</label>${chips(fromAcc.map(a => [a.id, a.name]), st.account_id, "xac")}</div>
     ${isCardPay ? `<div class="field"><label>Card</label>${chips(S.accounts.filter(a => a.kind === "card").map(a => [a.id, a.name]), st.to_account_id, "xto")}</div>` : ""}
     ${st.type === "expense" || st.type === "income" ? `<div class="field"><label>${st.type === "income" ? "From" : "Where / who"}</label><input type="text" id="xp" value="${esc(st.payee || "")}" placeholder="${st.type === "income" ? "Salary" : "Kedai kopi"}"></div>` : ""}
     <div class="two"><div class="field"><label>Date</label><input type="date" id="xd" value="${st.date}"></div><div class="field"><label>Time</label><input type="time" id="xt" value="${(st.time || "").slice(0, 5)}"></div></div>
-    <div class="field"><label>${st.type === "saving" ? "Saving for" : "Note"}</label><input type="text" id="xn" value="${esc(st.note || "")}" placeholder="${st.type === "saving" ? "Japan trip" : "Optional"}"></div>
+    ${st.type === "saving" && (S.goals || []).some(g => !g.done_at) ? `<div class="field"><label>Towards goal</label>${chips(S.goals.filter(g => !g.done_at || g.id === st.goal_id).map(g => [g.id, g.name]), st.goal_id, "xg")}</div>` : ""}
+    <div class="field"><label>Note</label><input type="text" id="xn" value="${esc(st.note || "")}" placeholder="Optional"></div>
     ${opts.review && t.raw_text ? `<details style="margin:-4px 2px 12px"><summary class="tiny muted">What the screenshot said</summary><pre class="tiny muted selectable" style="white-space:pre-wrap">${esc(t.raw_text)}</pre></details>` : ""}
     <div class="err" id="xerr"></div>
     <button class="btn primary block" id="xsave">${opts.review ? "Looks right" : isNew ? "Save" : "Save changes"}</button>
@@ -180,6 +182,7 @@ function txSheet(t, preset = {}, opts = {}) {
       sh.innerHTML = '<div class="grab"></div>' + draw(); mount(sh); });
     sh.querySelectorAll("[data-xc]").forEach(b => b.onclick = () => { st.category_id = st.category_id === b.dataset.xc ? null : b.dataset.xc; sh.querySelectorAll("[data-xc]").forEach(x => x.classList.toggle("on", x.dataset.xc === st.category_id)); });
     sh.querySelectorAll("[data-xac]").forEach(b => b.onclick = () => { st.account_id = b.dataset.xac; sh.querySelectorAll("[data-xac]").forEach(x => x.classList.toggle("on", x === b)); });
+    sh.querySelectorAll("[data-xg]").forEach(b => b.onclick = () => { st.goal_id = st.goal_id === b.dataset.xg ? null : b.dataset.xg; sh.querySelectorAll("[data-xg]").forEach(x => x.classList.toggle("on", x.dataset.xg === st.goal_id)); });
     sh.querySelectorAll("[data-xto]").forEach(b => b.onclick = () => { st.to_account_id = b.dataset.xto; sh.querySelectorAll("[data-xto]").forEach(x => x.classList.toggle("on", x === b)); });
     if (isNew) setTimeout(() => $("#xa")?.focus(), 50);
     $("#xsave").onclick = async () => {
@@ -188,18 +191,19 @@ function txSheet(t, preset = {}, opts = {}) {
       if (!(amount > 0)) { $("#xerr").textContent = "Enter an amount."; return; }
       if (st.type === "card_payment" && !st.to_account_id) { $("#xerr").textContent = "Pick the card you paid."; return; }
       const o = { type: st.type, amount, date: st.date, time: st.time, category_id: st.category_id, account_id: st.account_id || null,
-        to_account_id: st.type === "card_payment" ? st.to_account_id : null, payee: (st.type === "expense" || st.type === "income") ? (st.payee || "").trim() || null : null, note: (st.note || "").trim() || null, needs_review: false };
+        to_account_id: st.type === "card_payment" ? st.to_account_id : null, goal_id: st.type === "saving" ? (st.goal_id || null) : null, payee: (st.type === "expense" || st.type === "income") ? (st.payee || "").trim() || null : null, note: (st.note || "").trim() || null, needs_review: false };
       try {
         if (isNew) S.tx.unshift(await db.insert("myday_transactions", { ...o, source: "manual" }));
         else Object.assign(t, await db.update("myday_transactions", t.id, o));
         if (o.type === "expense" && o.payee && (o.category_id || o.account_id)) learn(o.payee, o.category_id, o.account_id);
         S.tx.sort((a, b) => b.date.localeCompare(a.date) || (b.time || "").localeCompare(a.time || ""));
+        if (window.MD.refreshGoalTx && (o.goal_id || t.goal_id)) await window.MD.refreshGoalTx();
         closeSheet(); render();
         if (opts.review) nextReview(); else toast(isNew ? "Saved" : "Changes saved");
       } catch (e) { fail(e); }
     };
     const del = $("#xdel"); if (del) del.onclick = async () => {
-      try { await db.remove("myday_transactions", t.id); S.tx = S.tx.filter(x => x.id !== t.id); closeSheet(); render();
+      try { await db.remove("myday_transactions", t.id); S.tx = S.tx.filter(x => x.id !== t.id); if (t.goal_id && window.MD.refreshGoalTx) await window.MD.refreshGoalTx(); closeSheet(); render();
         toast("Deleted", async () => { S.tx.unshift(await db.restore("myday_transactions", t.id)); S.tx.sort((a, b) => b.date.localeCompare(a.date)); render(); });
         if (opts.review) setTimeout(nextReview, 300); } catch (e) { fail(e); }
     };
@@ -232,7 +236,7 @@ function billSheet(b) {
     <div class="field"><label>Usually paid with</label>${chips(S.accounts.map(a => [a.id, a.name]), aid, "bac")}</div>
     <div class="err" id="berr"></div>
     <button class="btn primary block" id="bsave">${isNew ? "Add bill" : "Save"}</button>
-    ${isNew ? "" : '<div class="two" style="margin-top:8px"><button class="btn" id="bpay">Mark paid</button><button class="btn danger" id="bdel">Delete</button></div>'}`, sh => {
+    ${isNew ? "" : '<div class="btnrow" style="margin-top:8px"><button class="btn" id="bpay">Mark paid</button><button class="btn danger" id="bdel">Delete</button></div>'}`, sh => {
     sh.querySelectorAll("[data-bf]").forEach(x => x.onclick = () => { fr = x.dataset.bf; sh.querySelectorAll("[data-bf]").forEach(y => y.classList.toggle("on", y === x)); $("#bmw").style.display = fr === "yearly" ? "" : "none"; });
     sh.querySelectorAll("[data-bc]").forEach(x => x.onclick = () => { cid = x.dataset.bc; sh.querySelectorAll("[data-bc]").forEach(y => y.classList.toggle("on", y === x)); });
     sh.querySelectorAll("[data-bac]").forEach(x => x.onclick = () => { aid = x.dataset.bac; sh.querySelectorAll("[data-bac]").forEach(y => y.classList.toggle("on", y === x)); });
@@ -327,6 +331,7 @@ function setupSheet() {
   });
 }
 
+window.MD.ensureMonth = ensureMonth;
 window.MD.views.money = viewMoney;
 window.MD.binds.money = bindMoney;
 })();
