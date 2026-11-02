@@ -35,10 +35,9 @@ window.MD.refreshGoalTx = async () => { S.goalTx = await db.list("myday_transact
 
 /* ---------- views ---------- */
 function viewGoals() {
-  if (S.goalsView === "wish") S.goalsView = "goals";
-  return `<div class="top"><div><h1 class="h1">Goals</h1><div class="small muted serif" style="font-size:13px">little by little, it adds up</div></div><div class="row">${window.ART.flag(62)}</div></div>
-  <div class="seg">${[["goals", "Savings"], ["admin", "Life admin"]].map(([k, l]) => `<button data-gv="${k}" class="${S.goalsView === k ? "on" : ""}">${l}</button>`).join("")}</div>
-  ${({ goals: viewSavings, admin: viewAdmin }[S.goalsView] || viewSavings)()}`;
+  return `<div class="top"><div><h1 class="h1">Goals</h1><div class="small muted serif" style="font-size:14px">little by little, it adds up</div></div><div class="row">${window.ART.flag(62)}</div></div>
+  <div class="seg">${[["goals", "Savings"], ["wish", "Wishlist"], ["admin", "Life admin"]].map(([k, l]) => `<button data-gv="${k}" class="${S.goalsView === k ? "on" : ""}">${l}</button>`).join("")}</div>
+  ${{ goals: viewSavings, wish: viewWish, admin: viewAdmin }[S.goalsView]()}`;
 }
 /* ---------- cute trackers ---------- */
 const TINT = { lavender: ["#C9CBF3", "#8E92E0"], sage: ["#C8DECF", "#7FA38A"], sun: ["#FBE7A6", "#E5B93A"], rose: ["#F6CFCF", "#E8A0A0"], navy: ["#B9BCE6", "#2B3060"] };
@@ -92,15 +91,15 @@ function goalCard(g) {
   } else if (g.target_date) pace = `by ${fmtDate(g.target_date)}`;
   return `<div class="card jarcard" id="gc-${g.id}" style="${done ? "background:var(--sagebg);border:none" : ""}">
     <button class="jarmain" data-goal="${g.id}"><div class="jarbox">${jarArt(pct, g.color)}</div>
-      <div style="flex:1;min-width:0"><div class="between"><span class="h2" style="font-size:14px">${done ? window.ART.star(17).replace("<svg", '<svg style="vertical-align:-3px;margin-right:4px"') : ""}${esc(g.name)}</span><span class="pctbadge">${Math.floor(Math.min(1, pct) * 100)}%</span></div>
-      <div style="font-size:17px;font-weight:700;font-family:Nunito,Inter,sans-serif;margin-top:2px">${rm0(saved)} <span class="small muted" style="font-weight:400">of ${rm0(g.target)}</span></div>
+      <div style="flex:1;min-width:0"><div class="between"><span class="h2" style="font-size:15px">${done ? window.ART.star(17).replace("<svg", '<svg style="vertical-align:-3px;margin-right:4px"') : ""}${esc(g.name)}</span><span class="pctbadge">${Math.floor(Math.min(1, pct) * 100)}%</span></div>
+      <div style="font-size:18px;font-weight:700;font-family:Nunito,Inter,sans-serif;margin-top:2px">${rm0(saved)} <span class="small muted" style="font-weight:400">of ${rm0(g.target)}</span></div>
       <div class="tiny muted">${done ? "Jar full. You did it!" : left ? `${rm0(left)} to go${pace ? " · " + pace : ""}` : ""}</div></div></button>
-    ${done ? "" : `<button class="btn sun block" data-addsave="${g.id}" style="margin-top:10px;height:36px;font-size:12px">+ Drop savings in the jar</button>`}</div>`;
+    ${done ? "" : `<button class="btn sun block" data-addsave="${g.id}" style="margin-top:10px;height:36px;font-size:13px">+ Drop savings in the jar</button>`}</div>`;
 }
 function viewSavings() {
   const active = S.goals.filter(g => !g.done_at), done = S.goals.filter(g => g.done_at);
   const total = active.reduce((s, g) => s + savedFor(g), 0);
-  return `${active.length ? `<div class="card leave between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">SAVED TOWARDS GOALS</div><div style="font-size:23px;font-weight:700;font-family:Nunito,Inter,sans-serif">${rm(total)}</div><div class="small muted">${active.length} jar${active.length > 1 ? "s" : ""} filling up${(window.MD.savingsAccounts ? window.MD.savingsAccounts() : []).length ? " · kept in " + window.MD.savingsAccounts().map(x => x.a.name).join(", ") : ""}</div></div>${window.ART.jar(58)}</div><div style="height:10px"></div>` : ""}
+  return `${active.length ? `<div class="card leave between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">SAVED TOWARDS GOALS</div><div style="font-size:24px;font-weight:700;font-family:Nunito,Inter,sans-serif">${rm(total)}</div><div class="small muted">${active.length} jar${active.length > 1 ? "s" : ""} filling up${(window.MD.savingsAccounts ? window.MD.savingsAccounts() : []).length ? " · kept in " + window.MD.savingsAccounts().map(x => x.a.name).join(", ") : ""}</div></div>${window.ART.jar(58)}</div><div style="height:10px"></div>` : ""}
     ${active.map(goalCard).join("") || '<div class="empty">Start a savings jar, like a trip or an emergency fund.</div>'}
     <button class="addline" id="addgoal">+ New savings jar</button>
     ${done.length ? `<div class="lbl">Full jars</div>${done.map(goalCard).join("")}` : ""}
@@ -125,7 +124,7 @@ function viewAdmin() {
     const win = Math.max(r.notify_days, 1), fill = r.done_at ? 1 : d < 0 ? 1 : Math.max(0, Math.min(1, 1 - d / Math.max(win * 2, 30)));
     const big = r.done_at ? "Done" : d < 0 ? `${-d} day${d === -1 ? "" : "s"} late` : d === 0 ? "Due today" : d === 1 ? "Tomorrow" : `${d} days`;
     return `<div class="card admincard tone-${tone}" id="rc-${r.id}"><button class="adminmain" data-rem="${r.id}">${calArt(r.due_date, tone)}
-      <div style="flex:1;min-width:0"><div class="h2" style="font-size:14px">${esc(r.name)}</div>
+      <div style="flex:1;min-width:0"><div class="h2" style="font-size:15px">${esc(r.name)}</div>
       <div class="bigdays">${big}</div>
       <div class="tiny muted">${fmtDate(r.due_date)}${r.repeat !== "none" ? ` · every ${r.repeat === "yearly" ? "year" : "month"}` : ""}${r.note ? " · " + esc(r.note) : ""}</div>
       ${r.done_at ? "" : `<div class="bar" style="margin-top:6px"><i style="width:${fill * 100}%;background:${tone === "late" ? "#D86A6A" : tone === "soon" ? "#E5B93A" : "var(--peri)"}"></i></div>`}</div></button>

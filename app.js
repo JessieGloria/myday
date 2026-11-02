@@ -251,20 +251,30 @@ function render() {
     loadAll().then(render).catch(e => { app.innerHTML = `<div class="login"><div class="brand">MY DAY</div><p class="err">${esc(e.message)}</p><button class="btn" id="retry">Try again</button></div>`; $("#retry").onclick = render; });
     return;
   }
+  const hadLoader = loaderShown; loaderShown = false;
   const view = (window.MD.views[S.tab] || { today: viewToday, calendar: viewCalendar, money: () => viewSoon("Money", "Income, spending, savings, budgets, recurring bills, and screenshot-to-expense.", "Step 2"), goals: () => viewSoon("Goals", "Savings goals, wishlist, and life admin reminders.", "Step 3"), learn: () => viewSoon("Learn", "Your topics of the week, notes, and weekly streak.", "Step 3") }[S.tab])();
   const enter = S.tab !== lastTab; lastTab = S.tab;
-  app.innerHTML = `<div class="wrap${enter ? " enter" : ""}">${view}</div>${nav()}<button class="fab" id="fab" aria-label="Quick add">${I.plus}</button>`;
+  app.innerHTML = `<div class="wrap${enter ? " enter" : ""}${hadLoader && !loaderShown ? " fadein" : ""}">${view}</div>${nav()}<button class="fab" id="fab" aria-label="Quick add">${I.plus}</button>`;
   bindCommon();
   (window.MD.binds[S.tab] || { today: bindToday, calendar: bindCalendar }[S.tab])?.();
   window.ART.afterRender();
 }
 let lastTab = null;
 
-function skeleton() {
-  const b = (h, w = "100%", mt = 10, r = 20) => `<div class="sk" style="height:${h}px;width:${w};margin-top:${mt}px;border-radius:${r}px"></div>`;
-  return `<div class="wrap">${b(12, "30%", 4, 6)}${b(26, "55%", 8, 8)}${b(12, "40%", 8, 6)}${b(70, "100%", 18)}<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${b(86)}${b(86)}</div>${b(40, "100%", 16, 14)}${b(160)}${b(120)}</div>`;
+let loaderShown = false;
+function sproutLoader(msg) {
+  loaderShown = true;
+  return `<div class="sprout-load"><svg width="92" height="104" viewBox="0 0 92 104" aria-hidden="true">
+    <g class="sp-plant"><path d="M46 70 V44" stroke="#7FA38A" stroke-width="3.2" stroke-linecap="round" class="sp-stem"/>
+      <path d="M46 52 C34 50 28 40 30 32 C40 32 47 40 46 52z" fill="#9CBBA4" class="sp-leaf l"/><path d="M46 46 C58 44 64 34 62 26 C52 26 45 34 46 46z" fill="#B9D3C0" class="sp-leaf r"/></g>
+    <path d="M24 68 H68 L63 96 Q62 100 58 100 H34 Q30 100 29 96z" fill="#E8B9A0"/><rect x="21" y="64" width="50" height="10" rx="5" fill="#D99F84"/>
+    <circle cx="39" cy="84" r="1.5" fill="#5A4A3A"/><circle cx="53" cy="84" r="1.5" fill="#5A4A3A"/><path d="M43 88 q3 2.4 6 0" stroke="#5A4A3A" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+    <circle cx="35" cy="88" r="2" fill="#F4A7A7" opacity=".7"/><circle cx="57" cy="88" r="2" fill="#F4A7A7" opacity=".7"/></svg>
+    <div class="small muted serif">${msg}</div></div>`;
 }
-window.MD_skeletonCards = n => Array.from({ length: n }, (_, i) => `<div class="sk" style="height:${i ? 64 : 110}px;margin-top:10px;border-radius:20px"></div>`).join("");
+function skeleton() { return `<div class="wrap">${sproutLoader("Getting your day ready…")}</div>`; }
+window.MD_loader = msg => sproutLoader(msg);
+window.MD_skeletonCards = () => sproutLoader("Just a moment…");
 function nav() {
   const tabs = [["today", "Today", I.home], ["calendar", "Calendar", I.cal], ["money", "Money", I.wallet], ["goals", "Goals", I.target], ["learn", "Learn", I.book]];
   return `<nav class="nav">${tabs.map(([k, l, ic]) => `<button data-tab="${k}" class="${S.tab === k ? "on" : ""}">${ic}<span>${l}</span></button>`).join("")}</nav>`;
@@ -303,7 +313,7 @@ function viewToday() {
   <div class="top"><div><div class="muted">${greeting()}</div><h1 class="h1">Hi ${esc(name)} <span style="color:#F2C94C">☀</span></h1><div class="small muted">${fmtLong(t)}</div></div>
     <div class="row">${window.ART.sunPlant(70)}
     <button class="iconbtn" id="gear" aria-label="Settings">${I.gear}</button></div></div>
-  <div class="card status st-${lab.cls}"><div class="ic">${lab.icon}</div><div><div class="h2">${esc(lab.title)}</div><div class="small muted">${esc(lab.sub)}</div></div></div>${post}
+  ${dayArc()}${post}
   <div class="stats" style="grid-template-columns:1fr 1fr">
     <button class="stat" data-go="todo"><span class="si" style="background:var(--lav);color:var(--peri)">${I.todo}</span><b>${todoLeft}</b><span class="tiny muted">to do today</span></button>
     <button class="stat" data-go="money"><span class="si" style="background:var(--sunbg);color:#C99A1E">${I.coin}</span><b>RM${Math.round(window.MD.moneyToday ? window.MD.moneyToday() : 0)}</b><span class="tiny muted">spent today</span></button>
@@ -312,6 +322,43 @@ function viewToday() {
   <div class="seg">${[["plan", "Plan"], ["todo", "To do"], ["buy", "To buy"]].map(([k, l]) => `<button data-tv="${k}" class="${S.todayView === k ? "on" : ""}">${l}</button>`).join("")}</div>
   <div id="tv">${{ plan: viewPlan, todo: viewTodo, buy: viewBuy }[S.todayView]()}</div>`;
 }
+/* the day as a sun arc: 6am on the left, 11pm on the right */
+const DAY_FROM = 6, DAY_TO = 23;
+function dayArc() {
+  const t = today(), info = dayInfo(t), lab = dayLabel(info, t), st = S.settings, now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes(), span = (DAY_TO - DAY_FROM) * 60;
+  const fr = m => Math.max(0, Math.min(1, (m - DAY_FROM * 60) / span));
+  const f = fr(mins), before = mins < DAY_FROM * 60, after = mins >= DAY_TO * 60;
+  const R = 120, cx = 150, cy = 140, pt = x => [cx - R * Math.cos(Math.PI * x), cy - R * Math.sin(Math.PI * x)].map(v => v.toFixed(1));
+  const arc = (a, b) => { const [x1, y1] = pt(a), [x2, y2] = pt(b); return `M${x1} ${y1} A${R} ${R} 0 0 1 ${x2} ${y2}`; };
+  const toMin = s => { const [h, m] = hhmm(s).split(":").map(Number); return h * 60 + (m || 0); };
+  let band = "";
+  if (info.kind === "work") band = `<path d="${arc(fr(toMin(st.work_start)), fr(toMin(st.work_end)))}" class="da-band"/>`;
+  const plans = S.plans.filter(p => p.date === t && p.start_time).sort((a, b) => a.start_time.localeCompare(b.start_time));
+  const dots = plans.map(p => { const [x, y] = pt(fr(toMin(p.start_time))); return `<circle cx="${x}" cy="${y}" r="4.2" class="da-dot ${toMin(p.start_time) <= mins ? "past" : ""}"/>`; }).join("");
+  const next = plans.find(p => toMin(p.start_time) > mins);
+  const left = Math.max(0, DAY_TO * 60 - Math.max(mins, DAY_FROM * 60)), lh = Math.floor(left / 60), lm = left % 60;
+  const [sx, sy] = pt(f);
+  const sun = before || after
+    ? `<g transform="translate(${sx} ${sy})"><circle r="12" fill="#2B3060"/><path d="M4 -8 a9 9 0 1 0 5 13 a7 7 0 1 1 -5 -13z" fill="#F6D86B"/></g>`
+    : `<g class="da-sun" transform="translate(${sx} ${sy})"><g class="da-rays">${Array.from({ length: 8 }, (_, i) => `<rect x="-1.4" y="-21" width="2.8" height="6" rx="1.4" transform="rotate(${i * 45})" fill="#F2C94C"/>`).join("")}</g>
+        <circle r="13" fill="#F6D86B" stroke="#F2C94C" stroke-width="1.5"/><circle cx="-4.2" cy="-1.5" r="1.3" fill="#5A4A3A"/><circle cx="4.2" cy="-1.5" r="1.3" fill="#5A4A3A"/>
+        <path d="M-3 2.6 q3 2.6 6 0" stroke="#5A4A3A" stroke-width="1.3" fill="none" stroke-linecap="round"/><circle cx="-7" cy="2.5" r="1.8" fill="#F4A7A7" opacity=".75"/><circle cx="7" cy="2.5" r="1.8" fill="#F4A7A7" opacity=".75"/></g>`;
+  const big = before ? "Good morning soon" : after ? "Time to rest" : `${Math.round(f * 100)}%`;
+  const small = before ? "Your day starts at 6am" : after ? "Your day is done. Sleep well" : `of your day · ${lh ? lh + "h " : ""}${lm}m left`;
+  return `<div class="card dayarc" id="dayarc">
+    <div class="da-chip st-${lab.cls}"><span class="ic">${lab.icon}</span><span><b>${esc(lab.title)}</b> · ${esc(lab.sub)}</span></div>
+    <svg viewBox="0 0 300 158" class="da-svg" aria-hidden="true">
+      <path d="${arc(0, 1)}" class="da-track"/>${f > 0 ? `<path d="${arc(0, f)}" class="da-done"/>` : ""}${band}${dots}${sun}
+      <text x="${cx - R}" y="${cy + 16}" class="da-lbl" text-anchor="middle">6am</text><text x="${cx + R}" y="${cy + 16}" class="da-lbl" text-anchor="middle">11pm</text>
+      <text x="${cx}" y="${cy - 24}" class="da-big" text-anchor="middle">${esc(big)}</text>
+      <text x="${cx}" y="${cy - 4}" class="da-small" text-anchor="middle">${esc(small)}</text>
+    </svg>
+    ${next ? `<div class="da-next"><span class="da-ndot"></span>Next · <b>${t12(hhmm(next.start_time))}</b> ${esc(next.title)}</div>` : ""}
+  </div>`;
+}
+// keep the sun moving while the app is open
+setInterval(() => { const el = $("#dayarc"); if (el && S.tab === "today" && !document.hidden) el.outerHTML = dayArc(); }, 60000);
 function dueSoon() {
   const items = [];
   (window.MD.remindersDueSoon ? window.MD.remindersDueSoon() : []).forEach(r => { const d = Math.round((parse(r.due_date) - parse(today())) / 864e5);
@@ -702,7 +749,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 21 (card outstanding)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 22 (sun arc, total money, card limit)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);

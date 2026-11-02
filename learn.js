@@ -140,11 +140,23 @@ function viewBooks() {
   const reading = S.books.filter(b => !b.finished_at), done = S.books.filter(b => b.finished_at);
   const wk = weekOf(today()), yr = today().slice(0, 4);
   const weekPages = pagesIn(wk, today()), finishedYr = done.filter(b => b.finished_at.startsWith(yr)).length;
-  const card = b => { const p = b.total_pages ? b.current_page / b.total_pages : 0, last = S.bookLogs.find(l => l.book_id === b.id);
-    return `<div class="card bookcard" id="bk-${b.id}"><button class="topic-main" data-book="${b.id}"><div class="bookbox">${bookArt(b.color, p)}</div>
+  const pace = b => { // pages a day, from the last 14 days of logs (or since you started, if sooner)
+    const from = addDays(today(), -13), logs = S.bookLogs.filter(l => l.book_id === b.id && l.date >= from);
+    if (!logs.length) return 0;
+    const first = logs.reduce((m, l) => l.date < m ? l.date : m, today()), days = Math.max(1, Math.round((parse(today()) - parse(first)) / 864e5) + 1);
+    return logs.reduce((s, l) => s + Math.max(0, l.to_page - l.from_page), 0) / Math.max(days, Math.min(14, days));
+  };
+  const card = b => { const p = b.total_pages ? Math.min(1, b.current_page / b.total_pages) : 0, last = S.bookLogs.find(l => l.book_id === b.id);
+    const [lite, deep] = BCOL[b.color] || BCOL.lavender, left = b.total_pages ? Math.max(0, b.total_pages - b.current_page) : 0, pd = pace(b);
+    const eta = !b.total_pages ? "" : !left ? "Last page!" : pd > 0 ? (() => { const d = Math.ceil(left / pd); return d <= 1 ? "you could finish tomorrow" : `about ${d} days to finish at your pace`; })() : "log a page to see when you'll finish";
+    return `<div class="card bookcard" id="bk-${b.id}"><button class="topic-main" data-book="${b.id}"><div class="bookbox sm">${bookArt(b.color, p, 44)}</div>
       <div style="flex:1;min-width:0"><div class="h2" style="font-size:14px">${esc(b.title)}</div>${b.author ? `<div class="tiny muted">${esc(b.author)}</div>` : ""}
-        <div style="font-size:16px;font-weight:700;font-family:Nunito,Inter,sans-serif;margin-top:4px">Page ${b.current_page}${b.total_pages ? ` <span class="small muted" style="font-weight:400">of ${b.total_pages}</span>` : ""}</div>
-        ${b.total_pages ? `<div class="bar" style="margin-top:5px"><i style="width:${p * 100}%;background:${(BCOL[b.color] || BCOL.lavender)[1]}"></i></div><div class="tiny muted" style="margin-top:3px">${Math.floor(p * 100)}% · ${b.total_pages - b.current_page} pages to go${last ? " · read " + (last.date === today() ? "today" : fmtD(last.date)) : ""}</div>` : ""}</div></button>
+        <div class="tiny muted" style="margin-top:2px">${last ? "Read " + (last.date === today() ? "today" : fmtD(last.date)) : "Not started yet"}</div></div></button>
+      ${b.total_pages ? `<div class="readbar" style="--lite:${lite};--deep:${deep}"><div class="rtrack"><span class="tick" style="left:25%"></span><span class="tick" style="left:50%"></span><span class="tick" style="left:75%"></span>
+          <i class="rfill" style="width:${Math.max(p * 100, 7)}%"><span class="rpct">${Math.floor(p * 100)}%</span></i><span class="rmark" style="left:${Math.max(p * 100, 7)}%"></span></div>
+        <div class="between tiny" style="margin-top:6px"><span><b>Page ${b.current_page}</b> <span class="muted">of ${b.total_pages}</span></span><span class="muted">${left} pages to go</span></div>
+        <div class="tiny" style="margin-top:2px;color:var(--peri)">${eta}</div></div>`
+      : `<div class="small" style="margin:8px 2px 0"><b>Page ${b.current_page}</b> <span class="tiny muted">· add the total pages to see your progress</span></div>`}
       <div class="topic-acts"><button class="btn sun" data-page="${b.id}">Update page</button><button class="btn" data-finish="${b.id}">Finished it</button></div></div>`; };
   return `<div class="card leave between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">READING</div>
       <div style="font-size:23px;font-weight:700;font-family:Nunito,Inter,sans-serif">${weekPages} <span style="font-size:12px;font-weight:400;color:var(--navytext)">pages this week</span></div>
