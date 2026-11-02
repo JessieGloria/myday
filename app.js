@@ -417,7 +417,7 @@ function typeDaySheet(date) {
     inp.oninput = show; setTimeout(() => inp.focus(), 350);
     $("#tdsave").onclick = async () => {
       const items = parsePlanText(inp.value); if (!items.length) { window.ART.nudge(inp, "Type at least one line"); return; }
-      try { const rows = await rest("POST", "myday_plans", items.map(x => ({ date, title: x.title.slice(0, 120), start_time: x.start, end_time: x.end, color: autoColor(x.title, date, x.start) })));
+      try { const rows = await rest("POST", "myday_plans", items.map(x => ({ date, title: x.title.slice(0, 120), start_time: x.start, end_time: x.end, color: "lavender" })));
         S.plans.push(...rows); closeSheet(); render(); toast(`${rows.length} plan${rows.length > 1 ? "s" : ""} added`); } catch (e) { fail(e); }
     };
   });
@@ -441,7 +441,8 @@ function viewPlan() {
   const timed = plans.filter(p => p.start_time).sort((a, b) => a.start_time.localeCompare(b.start_time));
   const hours = timed.map(p => hr(p.start_time));
   const first = Math.min(6, ...hours), last = Math.max(23, ...hours);
-  const blk = p => `<button class="blk c-${p.color}" data-plan="${p.id}"><div class="bt">${p.important ? '<span class="pstar">★</span>' : ""}${esc(p.title)}</div>${p.note ? `<div class="bs">${esc(p.note)}</div>` : ""}</button>`;
+  const pc = planColors(sel);
+  const blk = p => `<button class="blk c-${pc[p.id]}" data-plan="${p.id}"><div class="bt">${p.important ? '<span class="pstar">★</span>' : ""}${esc(p.title)}</div>${p.note ? `<div class="bs">${esc(p.note)}</div>` : ""}</button>`;
   let grid = "";
   for (let h = first; h <= last; h++) {
     const here = timed.filter(p => hr(p.start_time) === h);
@@ -455,7 +456,7 @@ function viewPlan() {
   return `<div class="strip" id="strip">${strip}</div>
     <div class="between" style="margin:6px 2px 10px"><div class="h2">${esc(relDay(sel))}</div><span class="pill ${info.kind === "oncall" ? "navy" : info.kind === "leave" ? "sage" : info.kind === "work" ? "" : "warn"}">${esc(lab.title)}</span></div>
     ${info.prevOncall ? `<div class="tiny muted" style="margin:0 2px 8px">On-call from yesterday ends at 8am.</div>` : ""}
-    ${anytime.length ? `<div class="lbl">Anytime</div><div class="anyt">${anytime.map(p => `<button class="blk c-${p.color}" data-plan="${p.id}"><div class="bt">${esc(p.title)}</div>${p.note ? `<div class="bs">${esc(p.note)}</div>` : ""}</button>`).join("")}</div>` : ""}
+    ${anytime.length ? `<div class="lbl">Anytime</div><div class="anyt">${anytime.map(p => `<button class="blk c-${pc[p.id]}" data-plan="${p.id}"><div class="bt">${esc(p.title)}</div>${p.note ? `<div class="bs">${esc(p.note)}</div>` : ""}</button>`).join("")}</div>` : ""}
     <div class="hours" id="hours">${grid}</div>`;
 }
 function bindPlan() {
@@ -482,35 +483,24 @@ function bindPlan() {
       const start = parsed?.start || at, end = parsed?.start ? parsed.end : `${pad((Number(at.slice(0, 2)) + 1) % 24)}:00`;
       inp.disabled = true;
       const title = (parsed?.start ? parsed.title : v).slice(0, 120);
-      try { const r = await db.insert("myday_plans", { date: S.planDate, title, start_time: start, end_time: end, color: autoColor(title, S.planDate, start), important: imp });
+      try { const r = await db.insert("myday_plans", { date: S.planDate, title, start_time: start, end_time: end, color: "lavender", important: imp });
         S.plans.push(r); window.ART.celebrate(`[data-plan="${r.id}"]`); render(); } catch (e) { done = false; inp.disabled = false; fail(e); }
     };
     inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); save(); } if (e.key === "Escape") { done = true; render(); } });
     inp.addEventListener("blur", save);
   });
 }
-/* plans get a colour from their words; anything else takes the next colour so neighbours differ */
-const AUTO_COL = [
-  ["sun", /(breakfast|lunch|dinner|brunch|makan|coffee|kopi|\beat\b|supper|tea time)/i],
-  ["sage", /(gym|walk|\brun|jog|yoga|swim|workout|exercise|pilates|badminton|hike)/i],
-  ["lavender", /(study|read|revise|revision|course|class|lecture|learn|exam)/i],
-  ["rose", /(\bwith\b|call|meet|mum|mummy|mom|dad|daddy|date|birthday|family|friend)/i],
-  ["navy", /(bill|bank|shop|grocer|laundry|clean|\bpay|errand|post office|car wash|service)/i]
-];
-const ROTATE = ["lavender", "sage", "sun", "rose", "navy"];
-function autoColor(title, date, start) {
-  const hit = AUTO_COL.find(([, re]) => re.test(title || "")); if (hit) return hit[0];
-  const day = S.plans.filter(p => p.date === date).sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
-  const prev = [...day].reverse().find(p => (p.start_time || "") <= (start || "")), next = day.find(p => (p.start_time || "") > (start || ""));
-  let i = day.length % ROTATE.length;
-  for (let k = 0; k < ROTATE.length; k++) { const c = ROTATE[(i + k) % ROTATE.length]; if (c !== prev?.color && c !== next?.color) return c; }
-  return ROTATE[i];
+/* plans alternate through soft pastels in time order; a colour you pick yourself is kept */
+const PASTELS = ["lavender", "mint", "peach", "pink", "sky", "butter"];
+function planColors(date) {
+  const day = S.plans.filter(p => p.date === date).sort((a, b) => (!!a.start_time - !!b.start_time) || (a.start_time || "").localeCompare(b.start_time || "") || (a.created_at || "").localeCompare(b.created_at || ""));
+  const out = {}; day.forEach((p, i) => out[p.id] = p.color_manual && p.color ? p.color : PASTELS[i % PASTELS.length]); return out;
 }
-const COLORS = [["lavender", "var(--lav2)"], ["sage", "var(--sage)"], ["sun", "var(--sun)"], ["rose", "var(--rose)"], ["navy", "var(--navy)"]];
+const COLORS = [["lavender", "#DCDAF7"], ["mint", "#D3ECDD"], ["peach", "#FBDCC8"], ["pink", "#F8D5DF"], ["sky", "#D3E6F7"], ["butter", "#FAEDB8"]];
 function planSheet(p, date, at) {
   const endOf = t => t ? `${pad((Number(t.slice(0, 2)) + 1) % 24)}:${t.slice(3, 5)}` : "";
   const isNew = !p; p = p || { date: date || today(), title: "", start_time: at || "", end_time: endOf(at), note: "", color: "lavender" };
-  let color = p.color, important = !!p.important, picked = !!p.color_manual;
+  let color = isNew ? "lavender" : (planColors(p.date)[p.id] || p.color), important = !!p.important, picked = !!p.color_manual;
   openSheet(`<h2 class="h2" style="margin-bottom:14px">${isNew ? "Add a plan" : "Edit plan"}</h2>
     <div class="field"><label>What</label><input type="text" id="pt" value="${esc(p.title)}" placeholder="Dinner with Dad"></div>
     <div class="field"><label>Date</label><input type="date" id="pdt" value="${p.date}"></div>
@@ -527,7 +517,6 @@ function planSheet(p, date, at) {
     $("#pt").focus();
     $("#psave").onclick = async () => {
       const o = { title: $("#pt").value.trim(), date: $("#pdt").value, start_time: $("#ps").value || null, end_time: $("#pe").value || null, note: $("#pn").value.trim() || null, color, important, color_manual: picked };
-      if (!picked) o.color = autoColor(o.title, o.date, o.start_time ? o.start_time + ":00" : null);
       if (!o.title) { $("#perr").textContent = "Add what the plan is."; return; }
       if (!o.date) { $("#perr").textContent = "Pick a date."; return; }
       try {
@@ -773,7 +762,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 29 (auto colours, quick star)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 30 (alternating pastels)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);

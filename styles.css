@@ -626,3 +626,17 @@ body{background:transparent!important}
 .slotwrap .slotin{margin-left:0!important;width:100%!important;padding-right:40px!important}
 .slotstar{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:32px;height:28px;border-radius:9px;font-size:17px;color:var(--ink3);display:flex;align-items:center;justify-content:center}
 .slotstar.on{color:#E5B93A;background:var(--sunbg);animation:pop .35s cubic-bezier(.3,1.7,.5,1)}
+
+/* ---------- v30: alternating pastel plans ---------- */
+.blk.c-lavender{background:#E3E1FA;color:#3A3F78}
+.blk.c-mint{background:#D9EFE2;color:#2F5A3C}
+.blk.c-peach{background:#FCE3D3;color:#8A4B2A}
+.blk.c-pink{background:#FADDE6;color:#8A3B55}
+.blk.c-sky{background:#DAEAF8;color:#2F527A}
+.blk.c-butter{background:#FBF0C6;color:#7A5A12}
+.blk.c-sage{background:#D9EFE2;color:#2F5A3C}.blk.c-sun{background:#FBF0C6;color:#7A5A12}.blk.c-rose{background:#FADDE6;color:#8A3B55}
+.hc .blk{box-shadow:0 1px 0 rgba(43,48,96,.06);border:1px solid rgba(43,48,96,.05)}
+@media (prefers-color-scheme: dark){
+  .blk.c-lavender{background:#3A3D72;color:#E6E5FB}.blk.c-mint,.blk.c-sage{background:#2E4A3A;color:#D9EFE2}.blk.c-peach{background:#5A3E30;color:#FCE3D3}
+  .blk.c-pink,.blk.c-rose{background:#57374A;color:#FADDE6}.blk.c-sky{background:#2C4560;color:#DAEAF8}.blk.c-butter,.blk.c-sun{background:#54482A;color:#FBF0C6}
+}
