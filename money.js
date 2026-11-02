@@ -129,15 +129,23 @@ function totalCard() {
     ${held ? `<div class="tiny muted" style="margin-top:6px">${rm(held)} from others for shared bills isn't counted.</div>` : ""}` : ""}
   </div>`;
 }
-// the main card: what's left from this salary, then after bills and the credit card
-function payCard(p) {
+// what's left from a pay: salary (+ what was left from the pay before) − bank spending − savings − card payments
+function payMath(p, depth = 0) {
   const tx = periodTx(p), isCard = t => acc(t.account_id)?.kind === "card";
   const income = sum(tx.filter(t => t.type === "income")), bankSpent = sum(tx.filter(t => t.type === "expense" && !isCard(t)));
   const cardSpent = sum(tx.filter(t => t.type === "expense" && isCard(t))), saved = sum(tx.filter(t => t.type === "saving"));
-  const left = income - bankSpent - saved, cur = p.from === curPeriod().from;
+  const cardPaid = sum(tx.filter(t => t.type === "card_payment"));
+  let carry = 0;
+  if (depth < 6 && p.from > (S.txFrom || "") + "-01") { const pp = periodOf(addDays(p.from, -1)); if (periodTx(pp).some(t => t.type === "income")) carry = Math.max(0, payMath(pp, depth + 1).left); }
+  return { tx, income, bankSpent, cardSpent, saved, cardPaid, carry, left: income + carry - bankSpent - saved - cardPaid };
+}
+window.MD.lastPayLeft = () => { const p = curPeriod(); return payMath(p).carry; };
+// the main card: what's left from this salary, then after bills and the credit card
+function payCard(p) {
+  const { tx, income, bankSpent, cardSpent, saved, cardPaid, carry, left } = payMath(p), cur = p.from === curPeriod().from;
   const todo = cur ? billsInPeriod(p).filter(x => !x.paid) : [], still = sum(todo, myPart);
   const owed = cur ? cardOwed().reduce((s, x) => s + Math.max(0, x.owed), 0) : 0, after = left - still - owed;
-  const used = income ? Math.min(1, Math.max(0, (income - Math.max(0, after)) / income)) : 0;
+  const used = income + carry ? Math.min(1, Math.max(0, (income + carry - Math.max(0, after)) / (income + carry))) : 0;
   const budget = Number(S.settings.monthly_budget || 0), allSpent = bankSpent + cardSpent;
   const neg = n => n < 0 ? "color:#F3B7B7" : "";
   const row = (l, v, sign = "−", extra = "") => `<div class="pc-row"><span>${l}</span><b>${sign} ${rm(v)}</b></div>${extra}`;
@@ -145,10 +153,10 @@ function payCard(p) {
     <div class="between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">LEFT FROM THIS PAY</div>
       <div class="pc-big" style="${neg(left)}">${left < 0 ? "−" : ""}${rm(Math.abs(left))}</div>
       <div class="tiny" style="color:var(--navytext)">${income ? `of ${rm(income)} ${tx.some(t => t.type === "income" && /salary/i.test(t.payee || cat(t.category_id)?.name || "")) ? "salary" : "income"}` : "No salary recorded for this pay period yet"}</div></div>${window.ART.jar(54)}</div>
-    ${income ? `<div class="bar" style="background:#3E4480;margin-top:10px"><i class="ringless" style="width:${used * 100}%;background:${after < 0 ? "#F3B7B7" : "#F6D86B"}"></i></div>` : ""}
+    ${income + carry ? `<div class="bar" style="background:#3E4480;margin-top:10px"><i class="ringless" style="width:${used * 100}%;background:${after < 0 ? "#F3B7B7" : "#F6D86B"}"></i></div>` : ""}
     <div class="pc-rows">
-      ${row("Spent from bank", bankSpent)}${row("Saved", saved)}
-      ${cardSpent ? `<div class="pc-note">Card spending ${rm(cardSpent)} comes off with the card bill</div>` : ""}
+      ${carry ? row("Left from last pay", carry, "+") : ""}${row("Spent from bank", bankSpent)}${row("Saved", saved)}${cardPaid ? row("Card paid", cardPaid) : ""}
+      ${cardSpent ? `<div class="pc-note">Card spending ${rm(cardSpent)}</div>` : ""}
       ${cur ? `<div class="pc-line"></div>
       <button class="pc-row pc-btn" id="mstill"><span>Bills still to pay${todo.length ? ` · ${todo.length}` : ""} ${I.right.replace("<svg", '<svg width="12" height="12"')}</span><b>− ${rm(still)}</b></button>
       ${row("Credit card", owed)}
@@ -543,6 +551,8 @@ function setupSheet() {
 const salaryCat = () => S.categories.find(c => c.kind === "income" && /salary|gaji/i.test(c.name));
 const lastSalary = () => S.tx.find(t => t.type === "income" && t.category_id === salaryCat()?.id);
 const snoozed = k => { try { return localStorage.getItem("myday.snooze." + k) === today(); } catch (e) { return false; } };
+const snoozedFor = k => { try { return !!localStorage.getItem("myday.snooze." + k); } catch (e) { return false; } };
+const daysBetweenD = (a, b) => Math.round((parse(b) - parse(a)) / 864e5);
 const snooze = k => { try { localStorage.setItem("myday.snooze." + k, today()); } catch (e) {} };
 const payDayOf = m => (S.payDates || []).find(p => p.date.startsWith(m))?.date || null;
 window.MD.isPayDay = ds => (S.payDates || []).some(p => p.date === ds);
@@ -574,6 +584,10 @@ window.MD.extraDue = () => {
       <div class="duebtns"><button class="btn sun" data-salary="1">Add</button><button class="small muted" data-snooze="salary">Not yet</button></div></div>`]); }
   rentWaiting().forEach(r => out.push([r.x.due, `<div class="item duecard"><span class="dueic" style="background:var(--lav)">${I.home}</span><div class="grow"><div class="title">${esc(r.x.b.name)}: waiting on ${esc(r.waiting.join(", "))}</div><div class="tiny muted">Due ${fmtShort(r.x.due)} · ${rm(Number(r.x.b.share_amount) * r.waiting.length)} still to collect</div></div>
       <div class="duebtns"><button class="btn" data-remind="${r.x.b.id}">Remind</button></div></div>`]));
+  { const p = curPeriod(), pm = payMath(p), sav = savingsAccounts()[0], key = "carry" + p.from;
+    if (pm.carry > 0.5 && sav && daysBetweenD(p.from, today()) <= 7 && !pm.tx.some(t => t.type === "saving") && !snoozedFor(key))
+      out.push(["0", `<div class="item duecard"><span class="dueic" style="background:var(--sunbg)">${window.ART.jar(28)}</span><div class="grow"><div class="title">${rm(pm.carry)} left from last pay</div><div class="tiny muted">Move some to ${esc(sav.name)}?</div></div>
+      <div class="duebtns"><button class="btn sun" data-carrysave="${sav.id}">Save</button><button class="small muted" data-snoozep="${key}">Not now</button></div></div>`]); }
   cardsToPay().forEach(c => out.push(["1", `<div class="item duecard"><span class="dueic" style="background:var(--rosebg)">${I.wallet}</span><div class="grow"><div class="title">Pay ${esc(c.a.name)}</div><div class="tiny muted">${rm(c.owed)} owed · ${c.lastPay ? `last paid ${c.days} days ago` : `not paid in ${c.days} days`}</div></div>
       <div class="duebtns"><button class="btn sun" data-paycard2="${c.a.id}">Pay</button><button class="small muted" data-snooze="card${c.a.id}">Later</button></div></div>`]));
   return out;
@@ -581,6 +595,8 @@ window.MD.extraDue = () => {
 window.MD.bindExtraDue = () => {
   document.querySelectorAll("[data-salary]").forEach(b => b.onclick = salarySheet);
   document.querySelectorAll("[data-snooze]").forEach(b => b.onclick = () => { snooze(b.dataset.snooze); render(); toast("Hidden for today"); });
+  document.querySelectorAll("[data-carrysave]").forEach(b => b.onclick = () => txSheet(null, { type: "saving", to_account_id: b.dataset.carrysave, amount: Math.floor(payMath(curPeriod()).carry), note: "From last pay" }));
+  document.querySelectorAll("[data-snoozep]").forEach(b => b.onclick = () => { try { localStorage.setItem("myday.snooze." + b.dataset.snoozep, "1"); } catch (e) {} render(); toast("Okay, maybe next time"); });
   document.querySelectorAll("[data-remind]").forEach(b => b.onclick = () => remindRent(S.bills.find(x => x.id === b.dataset.remind)));
   document.querySelectorAll("[data-paycard2]").forEach(b => b.onclick = () => txSheet(null, { type: "card_payment", to_account_id: b.dataset.paycard2, amount: Math.round(cardOwed().find(x => x.a.id === b.dataset.paycard2)?.owed * 100) / 100 }));
 };

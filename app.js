@@ -22,6 +22,8 @@ const fmtLong = s => { const d = parse(s); return `${WDL[d.getDay()]}, ${d.getDa
 const t12 = t => { if (!t) return ""; let [h, m] = t.split(":").map(Number); const ap = h >= 12 ? "pm" : "am"; h = h % 12 || 12; return m ? `${h}:${pad(m)}${ap}` : `${h}${ap}`; };
 const hhmm = t => (t || "").slice(0, 5);
 const relDay = s => { const t = today(); if (s === t) return "Today"; if (s === addDays(t, 1)) return "Tomorrow"; if (s === addDays(t, -1)) return "Yesterday"; return fmtShort(s); };
+const daysBetweenA = (a, b) => Math.round((parse(b) - parse(a)) / 864e5);
+const dayRange = (a, b) => { const x = parse(a), y = parse(b); return x.getMonth() === y.getMonth() ? `${x.getDate()}–${y.getDate()} ${MON[y.getMonth()]}` : `${x.getDate()} ${MON[x.getMonth()]} – ${y.getDate()} ${MON[y.getMonth()]}`; };
 const nowIso = () => new Date().toISOString();
 const localDateOfIso = iso => iso ? ymd(new Date(iso)) : null;
 
@@ -646,7 +648,7 @@ function viewCalendar() {
   for (let i = 0; i <= 30 && up.length < 10; i++) {
     const ds = addDays(t, i), info = dayInfo(ds);
     if (info.kind === "oncall") up.push([ds, "On-call", "navy", "8am → 8am"]);
-    if (info.kind === "leave") up.push([ds, "Annual leave", "sage", "Leave"]);
+    if (info.kind === "leave") { const last = [...up].reverse().find(x => x[4]); if (last && addDays(last[5], 1) === ds) { last[5] = ds; } else up.push([ds, "Annual leave", "sage", "Leave", true, ds]); }
     if (info.kind === "holiday") up.push([ds, info.holiday, "warn", "Public holiday"]);
     if (window.MD.isPayDay && window.MD.isPayDay(ds)) up.push([ds, "Pay day", "warn", "Salary"]);
     S.plans.filter(p => p.date === ds).forEach(p => up.push([ds, p.title, "rose", p.start_time ? t12(hhmm(p.start_time)) : "Plan"]));
@@ -656,17 +658,19 @@ function viewCalendar() {
     ${S.paint ? paint : `<button class="btn block" id="proster" style="margin-bottom:10px;height:auto;padding:6px 14px;display:flex;align-items:center;gap:8px;justify-content:center">${window.ART.moon(34)}<span>Edit roster: on-call, leave, off days</span></button>`}
     <div class="cal" style="margin-top:10px"><div class="wd">${["M", "T", "W", "T", "F", "S", "S"].map(x => `<div>${x}</div>`).join("")}</div><div class="grid">${cells}</div>
     <div class="legend"><span><i style="background:var(--peri)"></i>Work</span><span><i style="background:var(--navy)"></i>On-call</span><span><i style="background:var(--sun)"></i>Off / holiday</span><span><i style="background:var(--sage)"></i>Leave</span><span><i style="background:var(--rose)"></i>Plan</span><span><i class="paydot" style="margin-right:5px"></i>Pay day</span></div></div>
-    <button class="card leave between" id="leavecard" style="margin-top:12px;width:100%;text-align:left"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">ANNUAL LEAVE ${lv.cy}</div>
+    <div class="card leave between" id="leavecard" style="margin-top:12px"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">ANNUAL LEAVE ${lv.cy}</div>
       <div style="font-size:25px;font-weight:500">${lv.left} <span style="font-size:13px;font-weight:400">days left</span></div>
       <div class="small muted">${lv.taken} taken${lv.booked ? ` · ${lv.booked} booked ahead` : ""} · ${lv.next} available in ${lv.cy + 1}</div></div>
-      <svg class="ring" width="58" height="58" aria-hidden="true"><circle cx="29" cy="29" r="23" fill="none" stroke="#3E4480" stroke-width="7"/><circle class="ringfill" cx="29" cy="29" r="23" fill="none" stroke="#F6D86B" stroke-width="7" stroke-linecap="round" stroke-dasharray="${Math.max(0, Math.min(1, lv.left / Math.max(1, Number(S.settings.leave_entitlement)))) * 144.5} 145" transform="rotate(-90 29 29)"/></svg></button>
+      <svg class="ring" width="58" height="58" aria-hidden="true"><circle cx="29" cy="29" r="23" fill="none" stroke="#3E4480" stroke-width="7"/><circle class="ringfill" cx="29" cy="29" r="23" fill="none" stroke="#F6D86B" stroke-width="7" stroke-linecap="round" stroke-dasharray="${Math.max(0, Math.min(1, lv.left / Math.max(1, Number(S.settings.leave_entitlement)))) * 144.5} 145" transform="rotate(-90 29 29)"/></svg></div>
     <div class="lbl">Coming up</div>
-    ${up.length ? `<div class="list">${up.map(([ds, title, cls, sub]) => `<button class="item" style="width:100%;text-align:left" data-day="${ds}"><div class="grow"><b style="font-weight:600">${esc(relDay(ds))}</b> · ${esc(title)}</div><span class="pill ${cls}">${esc(sub || "")}</span></button>`).join("")}</div>` : '<div class="empty">Nothing special in the next 30 days.</div>'}`;
+    ${up.length ? `<div class="list">${up.map(([ds, title, cls, sub, leave, end]) => leave
+      ? `<div class="item"><div class="grow"><b style="font-weight:600">${esc(end !== ds ? dayRange(ds, end) : relDay(ds))}</b> · ${esc(title)}</div><span class="pill ${cls}">${end !== ds ? `${daysBetweenA(ds, end) + 1} days` : "1 day"}</span></div>`
+      : `<button class="item" style="width:100%;text-align:left" data-day="${ds}"><div class="grow"><b style="font-weight:600">${esc(relDay(ds))}</b> · ${esc(title)}</div><span class="pill ${cls}">${esc(sub || "")}</span></button>`).join("")}</div>` : '<div class="empty">Nothing special in the next 30 days.</div>'}`;
 }
 function bindCalendar() {
   const mv = n => { const [y, m] = S.calMonth.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); S.calMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; render(); };
   $("#cprev").onclick = () => mv(-1); $("#cnext").onclick = () => mv(1);
-  const lc = $("#leavecard"); if (lc) lc.onclick = settingsSheet;
+
   const pr = $("#proster"); if (pr) pr.onclick = () => { S.paint = "oncall"; render(); };
   const pd = $("#pdone"); if (pd) pd.onclick = () => { S.paint = null; render(); toast("Roster saved"); };
   document.querySelectorAll("[data-pm]").forEach(b => b.onclick = () => { S.paint = b.dataset.pm; render(); });
@@ -747,7 +751,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 25 (day line, left from this pay)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 26 (carry over, tidier lists)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);

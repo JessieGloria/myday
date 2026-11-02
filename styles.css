@@ -592,3 +592,9 @@ body{background:transparent!important}
 .tc-chev{color:var(--ink3);transition:transform .25s}.tc-chev svg{width:16px;height:16px}
 .small-tc.open .tc-chev{transform:rotate(90deg)}
 #tv{min-height:calc(100vh - 140px)}
+
+/* ---------- v26: one text size for every list row ---------- */
+.item{font-size:12.5px}
+.item .title{font-size:12.5px;font-weight:500}
+.item .tiny{font-size:10px}
+.item>span[style*="font-weight:600"]{font-size:12.5px}
