@@ -320,37 +320,32 @@ function viewToday() {
   <div class="seg">${[["plan", "Plan", 0, ""], ["todo", "To do", todoLeft, "sun"], ["buy", "To buy", buyLeft, "lav"], ["routines", "Routines", rDue, "rose"]].map(([k, l, n, c]) => `<button data-tv="${k}" class="${S.todayView === k ? "on" : ""}">${l}${n ? `<span class="badge ${c}">${n > 99 ? "99+" : n}</span>` : ""}</button>`).join("")}</div>
   <div id="tv">${({ plan: viewPlan, todo: viewTodo, buy: viewBuy, routines: window.MD.viewRoutines || (() => "") }[S.todayView] || viewPlan)()}</div>`;
 }
-/* the day as a sun arc: 6am on the left, 11pm on the right */
-const DAY_FROM = 6, DAY_TO = 23;
+/* the day as a line from 6am to 11pm: sun until 6pm, then a moon, which sleeps from 11pm to 6am */
+const DAY_FROM = 6, DAY_TO = 23, MOON_FROM = 18;
+const SUN_SVG = `<svg viewBox="-24 -24 48 48" width="34" height="34" aria-hidden="true"><g class="da-rays">${Array.from({ length: 8 }, (_, i) => `<rect x="-1.5" y="-22" width="3" height="6" rx="1.5" transform="rotate(${i * 45})" fill="#F2C94C"/>`).join("")}</g>
+  <circle r="13" fill="#F6D86B" stroke="#F2C94C" stroke-width="1.5"/><circle cx="-4.2" cy="-1.5" r="1.4" fill="#5A4A3A"/><circle cx="4.2" cy="-1.5" r="1.4" fill="#5A4A3A"/>
+  <path d="M-3 2.6 q3 2.6 6 0" stroke="#5A4A3A" stroke-width="1.3" fill="none" stroke-linecap="round"/><circle cx="-7.5" cy="2.5" r="1.9" fill="#F4A7A7" opacity=".75"/><circle cx="7.5" cy="2.5" r="1.9" fill="#F4A7A7" opacity=".75"/></svg>`;
+const moonSvg = asleep => `<svg viewBox="-24 -24 48 48" width="34" height="34" aria-hidden="true" class="da-moon ${asleep ? "asleep" : ""}">
+  <path d="M6 -15 A15 15 0 1 0 14 9 A12 12 0 1 1 6 -15z" fill="#F6E7A8" stroke="#E5CF7A" stroke-width="1.3"/>
+  ${asleep ? `<path d="M-9 0 q2 2 4 0 M-1 0 q2 2 4 0" stroke="#5A4A3A" stroke-width="1.3" fill="none" stroke-linecap="round"/><path d="M-5 6 q1.5 1 3 0" stroke="#5A4A3A" stroke-width="1.2" fill="none" stroke-linecap="round"/>`
+    : `<circle cx="-7" cy="-1" r="1.4" fill="#5A4A3A"/><circle cx="1" cy="-1" r="1.4" fill="#5A4A3A"/><path d="M-5 4 q2 2 4 0" stroke="#5A4A3A" stroke-width="1.3" fill="none" stroke-linecap="round"/>`}
+  <circle cx="-9.5" cy="4" r="1.8" fill="#F4A7A7" opacity=".7"/><circle cx="3.5" cy="4" r="1.8" fill="#F4A7A7" opacity=".7"/></svg>`;
 function dayArc() {
-  const t = today(), info = dayInfo(t), st = S.settings, now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes(), span = (DAY_TO - DAY_FROM) * 60;
+  const t = today(), now = new Date(), mins = now.getHours() * 60 + now.getMinutes(), span = (DAY_TO - DAY_FROM) * 60;
   const fr = m => Math.max(0, Math.min(1, (m - DAY_FROM * 60) / span));
-  const f = fr(mins), before = mins < DAY_FROM * 60, after = mins >= DAY_TO * 60;
-  const RX = 122, RY = 62, cx = 150, cy = 76, pt = x => [cx - RX * Math.cos(Math.PI * x), cy - RY * Math.sin(Math.PI * x)].map(v => v.toFixed(1));
-  const arc = (a, b) => { const [x1, y1] = pt(a), [x2, y2] = pt(b); return `M${x1} ${y1} A${RX} ${RY} 0 0 1 ${x2} ${y2}`; };
+  const f = fr(mins), before = mins < DAY_FROM * 60, after = mins >= DAY_TO * 60, asleep = before || after, moon = asleep || mins >= MOON_FROM * 60;
   const toMin = s => { const [h, m] = hhmm(s).split(":").map(Number); return h * 60 + (m || 0); };
-  const band = info.kind === "work" ? `<path d="${arc(fr(toMin(st.work_start)), fr(toMin(st.work_end)))}" class="da-band"/>` : "";
   const plans = S.plans.filter(p => p.date === t && p.start_time).sort((a, b) => a.start_time.localeCompare(b.start_time));
-  const dots = plans.map(p => { const [x, y] = pt(fr(toMin(p.start_time))); return `<circle cx="${x}" cy="${y}" r="3.6" class="da-dot ${toMin(p.start_time) <= mins ? "past" : ""}"/>`; }).join("");
   const next = plans.find(p => toMin(p.start_time) > mins);
   const left = Math.max(0, DAY_TO * 60 - Math.max(mins, DAY_FROM * 60)), lh = Math.floor(left / 60), lm = left % 60;
-  const [sx, sy] = pt(f);
-  const sun = before || after
-    ? `<g transform="translate(${sx} ${sy}) scale(.8)"><circle r="12" fill="#2B3060"/><path d="M4 -8 a9 9 0 1 0 5 13 a7 7 0 1 1 -5 -13z" fill="#F6D86B"/></g>`
-    : `<g class="da-sun" transform="translate(${sx} ${sy}) scale(.78)"><g class="da-rays">${Array.from({ length: 8 }, (_, i) => `<rect x="-1.4" y="-21" width="2.8" height="6" rx="1.4" transform="rotate(${i * 45})" fill="#F2C94C"/>`).join("")}</g>
-        <circle r="13" fill="#F6D86B" stroke="#F2C94C" stroke-width="1.5"/><circle cx="-4.2" cy="-1.5" r="1.3" fill="#5A4A3A"/><circle cx="4.2" cy="-1.5" r="1.3" fill="#5A4A3A"/>
-        <path d="M-3 2.6 q3 2.6 6 0" stroke="#5A4A3A" stroke-width="1.3" fill="none" stroke-linecap="round"/><circle cx="-7" cy="2.5" r="1.8" fill="#F4A7A7" opacity=".75"/><circle cx="7" cy="2.5" r="1.8" fill="#F4A7A7" opacity=".75"/></g>`;
-  const big = before ? "Not yet 6am" : after ? "Time to rest" : `${Math.round(f * 100)}%`;
-  const small = before ? "Your day starts at 6am" : after ? "Your day is done. Sleep well" : `of your day · ${lh ? lh + "h " : ""}${lm}m left`;
-  return `<div class="card dayarc" id="dayarc">
-    <svg viewBox="0 0 300 92" class="da-svg" aria-hidden="true">
-      <path d="${arc(0, 1)}" class="da-track"/>${f > 0 ? `<path d="${arc(0, f)}" class="da-done"/>` : ""}${band}${dots}${sun}
-      <text x="${cx - RX}" y="${cy + 14}" class="da-lbl" text-anchor="middle">6am</text><text x="${cx + RX}" y="${cy + 14}" class="da-lbl" text-anchor="middle">11pm</text>
-      <text x="${cx}" y="${cy - 16}" class="da-big" text-anchor="middle">${esc(big)}</text>
-      <text x="${cx}" y="${cy + 2}" class="da-small" text-anchor="middle">${esc(small)}</text>
-    </svg>
-    ${next ? `<div class="da-next"><span class="da-ndot"></span>Next · <b>${t12(hhmm(next.start_time))}</b> ${esc(next.title)}</div>` : ""}
+  const head = asleep ? `<b>Sleep well</b> <span class="muted">${before ? "· your day starts at 6am" : "· your day is done"}</span>`
+    : `<b>${Math.round(f * 100)}%</b> <span class="muted">of your day · ${lh ? lh + "h " : ""}${lm}m left</span>`;
+  return `<div class="card dayline ${moon ? "night" : ""}" id="dayarc">
+    <div class="dl-head small">${head}</div>
+    <div class="dl-track"><i class="dl-fill" style="width:${(asleep && before ? 0 : f) * 100}%"></i>
+      ${plans.map(p => `<span class="dl-dot ${toMin(p.start_time) <= mins ? "past" : ""}" style="left:${fr(toMin(p.start_time)) * 100}%"></span>`).join("")}
+      <span class="dl-icon ${asleep ? "sleep" : ""}" style="left:${(before ? 0 : f) * 100}%">${moon ? moonSvg(asleep) : SUN_SVG}${asleep ? '<span class="zz"><i>z</i><i>z</i><i>z</i></span>' : ""}</span></div>
+    <div class="between tiny faint" style="margin-top:4px"><span>6am</span>${next ? `<span class="dl-next">Next · <b>${t12(hhmm(next.start_time))}</b> ${esc(next.title)}</span>` : ""}<span>11pm</span></div>
   </div>`;
 }
 // keep the sun moving while the app is open
@@ -373,7 +368,12 @@ function bindToday() {
   document.querySelectorAll("[data-dsrem]").forEach(b => b.onclick = () => window.MD.remSheet(S.reminders.find(r => r.id === b.dataset.dsrem)));
   document.querySelectorAll("[data-dsbill]").forEach(b => b.onclick = () => { S.tab = "money"; S.moneyView = "bills"; S.moneyFrom = null; render(); window.scrollTo(0, 0); });
   const rc = $("#recapcard"); if (rc) rc.onclick = () => window.MD.recapSheet();
-  document.querySelectorAll("[data-tv]").forEach(b => b.onclick = () => { S.todayView = b.dataset.tv; lastTab = null; try { localStorage.setItem("myday.todayView", S.todayView); } catch (e) {} render(); });
+  document.querySelectorAll("[data-tv]").forEach(b => b.onclick = () => {
+    const seg = b.closest(".seg"), before = seg ? seg.getBoundingClientRect().top : null;
+    S.todayView = b.dataset.tv; try { localStorage.setItem("myday.todayView", S.todayView); } catch (e) {} render();
+    const now = document.querySelector("#tv")?.previousElementSibling; // keep the tabs at the same spot on screen
+    if (before !== null && now) window.scrollBy(0, now.getBoundingClientRect().top - before);
+  });
   document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { const g = b.dataset.go; if (g === "cal") { S.tab = "calendar"; } else if (g === "money") { S.tab = "money"; } else { S.todayView = g; } render(); });
   window.MD.bindRoutinesDue && window.MD.bindRoutinesDue();
   if (S.todayView !== "routines") ({ plan: bindPlan, todo: bindTodo, buy: bindBuy }[S.todayView] || bindPlan)();
@@ -747,7 +747,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 24 (routines, still to pay)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 25 (day line, left from this pay)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);

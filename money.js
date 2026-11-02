@@ -120,17 +120,41 @@ function totalCard() {
   const all = [...banks, ...sav]; if (!all.length) return "";
   const held = heldForOthers(), total = all.reduce((s, x) => s + x.bal, 0) - held;
   const owed = cardOwed().reduce((s, x) => s + Math.max(0, x.owed), 0);
-  const todo = billsInPeriod(curPeriod()).filter(x => !x.paid), still = sum(todo, myPart);
-  const pos = all.filter(x => x.bal > 0), ptot = pos.reduce((s, x) => s + x.bal, 0) || 1;
-  const pp = curPeriod();
-  return `<div class="card totalcard">
-    <div class="between"><div><div class="lbl" style="margin:0 0 2px">TOTAL MONEY</div>
-      <div class="totalnum">${total < 0 ? "−" : ""}${rm(Math.abs(total))}</div>
-      ${owed ? `<div class="small muted">After card: <b style="color:var(--ink)">${rm(total - owed)}</b></div>` : ""}</div>${window.ART.jar(52)}</div>
-    ${todo.length ? `<button class="stillpay" id="mstill"><span class="sp-ic">${I.cal}</span><span class="grow"><span class="small">Still to pay this period</span><span class="tiny muted"> · ${todo.length} bill${todo.length === 1 ? "" : "s"}</span><br><span class="tiny muted">After this period's bills: <b style="color:var(--ink)">${rm(total - owed - still)}</b></span></span><b>${rm(still)}</b></button>` : ""}
-    <div class="segbar">${pos.map(x => `<i style="width:${x.bal / ptot * 100}%;background:${ACOL(x.a)}"></i>`).join("")}</div>
+  const pos = all.filter(x => x.bal > 0), ptot = pos.reduce((s, x) => s + x.bal, 0) || 1, pp = curPeriod(), open = !!S.totalOpen;
+  return `<div class="card totalcard small-tc ${open ? "open" : ""}">
+    <button class="tc-head" id="mtotal"><span class="grow"><span class="tiny muted">All accounts</span><br><b class="tc-num">${total < 0 ? "−" : ""}${rm(Math.abs(total))}</b>${owed ? `<span class="tiny muted"> · after card ${rm(total - owed)}</span>` : ""}</span>
+      <span class="tc-mini">${pos.map(x => `<i style="flex:${x.bal / ptot};background:${ACOL(x.a)}"></i>`).join("")}</span><span class="tc-chev">${I.right}</span></button>
+    ${open ? `<div class="segbar">${pos.map(x => `<i style="width:${x.bal / ptot * 100}%;background:${ACOL(x.a)}"></i>`).join("")}</div>
     <div class="acclegend">${all.map(x => `<${x.sav ? `button data-savacc="${x.a.id}"` : "div"} class="accrow"><span class="accdot" style="background:${ACOL(x.a)}"></span><span class="grow small">${esc(x.a.name)}${x.sav ? (s => s ? ` <span class="tiny muted">· +${rm0(s)} this pay</span>` : "")(sum(periodTx(pp).filter(t => t.type === "saving" && t.to_account_id === x.a.id))) : ""}</span><b class="small ${x.bal < 0 ? "neg" : ""}">${x.bal < 0 ? "−" : ""}${rm(Math.abs(x.bal))}</b></${x.sav ? "button" : "div"}>`).join("")}</div>
-    ${held ? `<div class="tiny muted" style="margin-top:6px">${rm(held)} from others for shared bills isn't counted.</div>` : ""}
+    ${held ? `<div class="tiny muted" style="margin-top:6px">${rm(held)} from others for shared bills isn't counted.</div>` : ""}` : ""}
+  </div>`;
+}
+// the main card: what's left from this salary, then after bills and the credit card
+function payCard(p) {
+  const tx = periodTx(p), isCard = t => acc(t.account_id)?.kind === "card";
+  const income = sum(tx.filter(t => t.type === "income")), bankSpent = sum(tx.filter(t => t.type === "expense" && !isCard(t)));
+  const cardSpent = sum(tx.filter(t => t.type === "expense" && isCard(t))), saved = sum(tx.filter(t => t.type === "saving"));
+  const left = income - bankSpent - saved, cur = p.from === curPeriod().from;
+  const todo = cur ? billsInPeriod(p).filter(x => !x.paid) : [], still = sum(todo, myPart);
+  const owed = cur ? cardOwed().reduce((s, x) => s + Math.max(0, x.owed), 0) : 0, after = left - still - owed;
+  const used = income ? Math.min(1, Math.max(0, (income - Math.max(0, after)) / income)) : 0;
+  const budget = Number(S.settings.monthly_budget || 0), allSpent = bankSpent + cardSpent;
+  const neg = n => n < 0 ? "color:#F3B7B7" : "";
+  const row = (l, v, sign = "−", extra = "") => `<div class="pc-row"><span>${l}</span><b>${sign} ${rm(v)}</b></div>${extra}`;
+  return `<div class="card leave paycard">
+    <div class="between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">LEFT FROM THIS PAY</div>
+      <div class="pc-big" style="${neg(left)}">${left < 0 ? "−" : ""}${rm(Math.abs(left))}</div>
+      <div class="tiny" style="color:var(--navytext)">${income ? `of ${rm(income)} ${tx.some(t => t.type === "income" && /salary/i.test(t.payee || cat(t.category_id)?.name || "")) ? "salary" : "income"}` : "No salary recorded for this pay period yet"}</div></div>${window.ART.jar(54)}</div>
+    ${income ? `<div class="bar" style="background:#3E4480;margin-top:10px"><i class="ringless" style="width:${used * 100}%;background:${after < 0 ? "#F3B7B7" : "#F6D86B"}"></i></div>` : ""}
+    <div class="pc-rows">
+      ${row("Spent from bank", bankSpent)}${row("Saved", saved)}
+      ${cardSpent ? `<div class="pc-note">Card spending ${rm(cardSpent)} comes off with the card bill</div>` : ""}
+      ${cur ? `<div class="pc-line"></div>
+      <button class="pc-row pc-btn" id="mstill"><span>Bills still to pay${todo.length ? ` · ${todo.length}` : ""} ${I.right.replace("<svg", '<svg width="12" height="12"')}</span><b>− ${rm(still)}</b></button>
+      ${row("Credit card", owed)}
+      <div class="pc-after"><span>After bills &amp; card</span><b style="${neg(after)}">${after < 0 ? "−" : ""}${rm(Math.abs(after))}</b></div>` : ""}
+      ${budget ? `<div class="pc-note">Budget: ${rm(Math.max(0, budget - allSpent))} left of ${rm0(budget)}</div>` : ""}
+    </div>
   </div>`;
 }
 function cardTile(x) {
@@ -217,17 +241,9 @@ function viewOverview() {
   const recent = periodTx(p).slice(0, 6);
   return `
   ${review.length ? `<button class="card between" id="mreview" style="width:100%;text-align:left;background:var(--sunbg);border:none;margin-bottom:12px"><div><div class="h2" style="color:var(--sunink)">${review.length} to check</div><div class="small" style="color:var(--sunink)">Saved from your screenshots. Tap to confirm.</div></div><span style="color:var(--sunink)">${I.right.replace("<svg", '<svg width="20" height="20"')}</span></button>` : ""}
+  ${payCard(p)}
   ${totalCard()}
   <div class="mact">${[["expense", "Spent", I.coin, "var(--rosebg)"], ["income", "Income", I.plus, "var(--sagebg)"], ["saving", "Saved", I.target || I.plus, "var(--sunbg)"]].map(([k, l, ic, bg]) => `<button data-madd="${k}"><span class="qi" style="background:${bg}">${ic}</span>${l}</button>`).join("")}</div>
-  <div class="card leave" style="padding:16px 18px;margin-top:10px">
-    <div class="between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">${budget ? "LEFT TO SPEND THIS PAY" : spentOnly ? "SPENT THIS PAY" : "BALANCE THIS PAY"}</div>
-    <div style="font-size:29px;font-weight:600;font-family:Nunito,Inter,sans-serif;${left < 0 && !spentOnly ? "color:#F3B7B7" : ""}">${left < 0 && !spentOnly ? "−" : ""}${rm(Math.abs(left))}</div></div>${window.ART.jar(58)}</div>
-    ${budget ? `<div class="tiny muted">of ${rm0(budget)} budget</div><div class="bar" style="background:#3E4480;margin-top:8px"><i class="ringless" style="width:${Math.min(100, tt.spent / budget * 100)}%;background:${tt.spent > budget ? "#F3B7B7" : "#F6D86B"}"></i></div>` : ""}
-    <div class="between" style="margin-top:14px;font-size:10.5px">
-      <div><div class="muted">Income</div><div style="font-size:14px;font-weight:600;color:#BFE3C9">${rm(tt.income)}</div></div>
-      <div><div class="muted">Spent</div><div style="font-size:14px;font-weight:600;color:#F3B7B7">${rm(tt.spent)}</div></div>
-      <div><div class="muted">Saved</div><div style="font-size:14px;font-weight:600;color:#F6D86B">${rm(tt.saved)}</div></div></div>
-  </div>
   ${owed.map(cardTile).join("")}
   ${bills.length ? `<div class="between"><div class="lbl">Bills due</div><button class="small" style="color:var(--peri)" data-mv="bills">See all</button></div>
     <div class="list">${bills.slice(0, 4).map(x => `<button class="item" style="width:100%;text-align:left" data-bill="${x.b.id}"><div class="grow"><div class="title">${esc(x.b.name)}</div><div class="tiny muted">${x.b.amount ? rm(x.b.amount) : "Amount varies"} · due ${fmtShort(x.due)}${(x.b.people || []).length ? ` · collected ${x.coll.filter(c => c.tx).length}/${x.coll.length}` : ""}</div></div>${billPill(x)}</button>`).join("")}</div>` : ""}
@@ -299,6 +315,7 @@ function bindMoney() {
   document.querySelectorAll("[data-savacc]").forEach(b => b.onclick = () => savAccSheet(acc(b.dataset.savacc)));
   const bu = $("#mbud"); if (bu) bu.onclick = budgetSheet;
   const rc = $("#mrecap"); if (rc) rc.onclick = () => { const p = P(); window.MD.recapSheet(p.from === curPeriod().from ? null : p.from); };
+  const mt = $("#mtotal"); if (mt) mt.onclick = () => { S.totalOpen = !S.totalOpen; render(); };
   document.querySelectorAll("[data-madd]").forEach(b => b.onclick = () => txSheet(null, { type: b.dataset.madd }));
   const ms = $("#mstill"); if (ms) ms.onclick = () => { S.moneyFrom = null; S.moneyView = "bills"; render(); window.scrollTo(0, 0); };
   const ab = $("#addbill"); if (ab) ab.onclick = () => billSheet(null);
