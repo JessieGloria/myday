@@ -27,21 +27,21 @@ function stats(p) {
   };
 }
 function recapSheet(from) {
-  const p = from ? per(from) : lastPeriod();
-  if (!p.to) p.to = today();
+  const p = { ...(from ? per(from) : lastPeriod()) }, cur = per(today()), isCur = p.from === cur.from;
+  if (!p.to || p.to > today()) p.to = isCur ? today() : p.to || today();
   const s = stats(p), pp = prevPeriod(p), ps = stats(pp), last = lastPeriod();
   const diff = s.spent - ps.spent, hasPrev = ps.spent > 0, G = window.MD.SPEND_GROUPS || {};
   const groups = Object.entries(G).map(([k, [l, c]]) => ({ k, l, c, v: s.byGroup[k] || 0 })).filter(x => x.v > 0);
   const gtot = groups.reduce((a, x) => a + x.v, 0) || 1;
   const catsIn = k => (S.categories || []).filter(c => c.kind === "expense" && (c.spend_group || "lifestyle") === k).map(c => c.name).join(", ");
-  openSheet(`<div class="between"><div><div class="lbl" style="margin:0">MONEY RECAP</div><h2 class="h1" style="font-size:21px">${esc(window.MD.fmtPeriod(p))}</h2></div>
-      <div class="row"><button class="iconbtn" data-rm="${pp.from}" aria-label="Previous pay period">${I.left}</button>${p.from < last.from ? `<button class="iconbtn" data-rm="${addDays(p.to, 1)}" aria-label="Next pay period">${I.right}</button>` : ""}</div></div>
+  openSheet(`<div class="between"><div><div class="lbl" style="margin:0">MONEY RECAP</div><h2 class="h1" style="font-size:21px">${esc(isCur ? window.MD.fmtPeriod(cur) : window.MD.fmtPeriod(p))}</h2>${isCur ? '<div class="small muted">so far</div>' : ""}</div>
+      <div class="row"><button class="iconbtn" data-rm="${pp.from}" aria-label="Previous pay period">${I.left}</button>${p.from < cur.from ? `<button class="iconbtn" data-rm="${addDays(p.to, 1)}" aria-label="Next pay period">${I.right}</button>` : ""}</div></div>
     <div class="card leave" style="margin-top:14px">
       <div class="between" style="font-size:10.5px"><div><div class="muted">Income</div><div style="font-size:14px;font-weight:600;color:#BFE3C9">${rm(s.income)}</div></div>
       <div><div class="muted">Spent</div><div style="font-size:14px;font-weight:600;color:#F3B7B7">${rm(s.spent)}</div></div>
       <div><div class="muted">Saved</div><div style="font-size:14px;font-weight:600;color:#F6D86B">${rm(s.saved)}</div></div></div>
-      ${s.left !== null && s.income ? `<div class="pc-after" style="margin-top:12px"><span>Left at the end</span><b>${s.left < 0 ? "−" : ""}${rm(Math.abs(s.left))}</b></div>` : ""}
-      ${hasPrev ? `<div class="small muted" style="margin-top:10px">${diff <= 0 ? `You spent ${rm(-diff)} less than the pay period before.` : `You spent ${rm(diff)} more than the pay period before.`}</div>` : ""}</div>
+      ${s.left !== null && s.income ? `<div class="pc-after" style="margin-top:12px"><span>${isCur ? "Left so far" : "Left at the end"}</span><b>${s.left < 0 ? "−" : ""}${rm(Math.abs(s.left))}</b></div>` : ""}
+      ${hasPrev ? `<div class="small muted" style="margin-top:10px">${isCur ? (diff <= 0 ? `So far ${rm(-diff)} less than the whole pay period before.` : `So far ${rm(diff)} more than the whole pay period before.`) : diff <= 0 ? `You spent ${rm(-diff)} less than the pay period before.` : `You spent ${rm(diff)} more than the pay period before.`}</div>` : ""}</div>
     ${groups.length ? `<div class="lbl">Spending by type</div><div class="card">
       <div class="segbar" style="margin:2px 0 10px">${groups.map(x => `<i style="width:${x.v / gtot * 100}%;background:${x.c}"></i>`).join("")}</div>
       ${groups.map(x => `<details class="grp"><summary><span class="accdot" style="background:${x.c}"></span><span class="grow small">${esc(x.l)}</span><span class="tiny muted">${Math.round(x.v / gtot * 100)}%</span><b class="small">${rm(x.v)}</b></summary><div class="tiny muted" style="padding:2px 0 6px 16px">${esc(catsIn(x.k) || "—")}</div></details>`).join("")}</div>` : ""}

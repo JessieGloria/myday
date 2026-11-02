@@ -321,7 +321,7 @@ function bindMoney() {
   const r = $("#mreview"); if (r) r.onclick = nextReview;
   document.querySelectorAll("[data-savacc]").forEach(b => b.onclick = () => savAccSheet(acc(b.dataset.savacc)));
   const bu = $("#mbud"); if (bu) bu.onclick = budgetSheet;
-  const rc = $("#mrecap"); if (rc) rc.onclick = () => { const p = P(); window.MD.recapSheet(p.from === curPeriod().from ? null : p.from); };
+  const rc = $("#mrecap"); if (rc) rc.onclick = () => window.MD.recapSheet(P().from);
   const mt = $("#mtotal"); if (mt) mt.onclick = () => { S.totalOpen = !S.totalOpen; render(); };
   document.querySelectorAll("[data-madd]").forEach(b => b.onclick = () => txSheet(null, { type: b.dataset.madd }));
   const ms = $("#mstill"); if (ms) ms.onclick = () => { S.moneyFrom = null; S.moneyView = "bills"; render(); window.scrollTo(0, 0); };

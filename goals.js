@@ -124,7 +124,7 @@ function viewAdmin() {
     const win = Math.max(r.notify_days, 1), fill = r.done_at ? 1 : d < 0 ? 1 : Math.max(0, Math.min(1, 1 - d / Math.max(win * 2, 30)));
     const big = r.done_at ? "Done" : d < 0 ? `${-d} day${d === -1 ? "" : "s"} late` : d === 0 ? "Due today" : d === 1 ? "Tomorrow" : `${d} days`;
     return `<div class="card admincard tone-${tone}" id="rc-${r.id}"><button class="adminmain" data-rem="${r.id}">${calArt(r.due_date, tone)}
-      <div style="flex:1;min-width:0"><div class="h2" style="font-size:14px">${esc(r.name)}</div>
+      <div style="flex:1;min-width:0"><div class="h2" style="font-size:12.5px">${esc(r.name)}</div>
       <div class="bigdays">${big}</div>
       <div class="tiny muted">${fmtDate(r.due_date)}${r.repeat !== "none" ? ` · every ${r.repeat === "yearly" ? "year" : "month"}` : ""}${r.note ? " · " + esc(r.note) : ""}</div>
       ${r.done_at ? "" : `<div class="bar" style="margin-top:6px"><i style="width:${fill * 100}%;background:${tone === "late" ? "#D86A6A" : tone === "soon" ? "#E5B93A" : "var(--peri)"}"></i></div>`}</div></button>

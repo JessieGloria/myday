@@ -609,3 +609,14 @@ body{background:transparent!important}
 .grp summary{display:flex;align-items:center;gap:8px;padding:7px 0;list-style:none;cursor:pointer;border-top:1px dashed var(--line)}
 .grp:first-of-type summary{border-top:none}.grp summary::-webkit-details-marker{display:none}
 .grp summary .grow{flex:1}
+
+/* ---------- v28: planner text like the rest, + on the same line, smaller life admin ---------- */
+.hc .blk .bt{font-size:12.5px;font-weight:500}
+.hc .blk .bs{font-size:10px}
+.slotin{font-size:12.5px!important;font-weight:400!important;height:32px!important;line-height:32px!important}
+.hc{position:relative}
+.hc.has .blk{width:calc(100% - 44px)}
+.hc.has .slot.more{position:absolute;right:0;top:5px;width:32px;height:32px;min-height:32px;margin:0;padding:0;justify-content:center}
+.hc.has .slotin{width:calc(100% - 8px)!important}
+.admincard .bigdays{font-size:14px;font-weight:700}
+.admincard .tiny{font-size:10px}

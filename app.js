@@ -447,7 +447,7 @@ function viewPlan() {
     const here = timed.filter(p => hr(p.start_time) === h);
     const inBand = band && h >= band.from && h < band.to;
     const bandStart = band && h === band.from;
-    grid += `<div class="hr ${inBand ? band.cls : ""} ${bandStart ? "bstart" : ""}"><div class="hl">${t12(pad(h % 24) + ":00")}</div><div class="hc">
+    grid += `<div class="hr ${inBand ? band.cls : ""} ${bandStart ? "bstart" : ""}"><div class="hl">${t12(pad(h % 24) + ":00")}</div><div class="hc ${here.length ? "has" : ""}">
       ${bandStart ? `<button class="bandtag" data-auto="1">${esc(band.label)} · ${band.label === "Work" ? `${t12(hhmm(st.work_start))}–${t12(hhmm(st.work_end))}` : "8am → 8am"}</button>` : ""}
       ${here.map(blk).join("")}
       <button class="slot ${here.length ? "more" : ""}" data-slot="${pad(h % 24)}:00" aria-label="Add at ${t12(pad(h % 24) + ":00")}"><span>+</span></button></div></div>`;
@@ -750,7 +750,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 27 (important plans, money recap)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 28 (recap so far, tidier planner)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);
