@@ -1,52 +1,57 @@
-/* My Day — monthly recap and data export (step 3). */
+/* My Day — pay period recap and data export (step 3). */
 (() => {
 "use strict";
 const { esc, pad, ymd, parse, addDays, today, S, openSheet, toast, I } = window.MD;
 const MONL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const rm = n => "RM " + Number(n || 0).toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const sum = a => a.reduce((s, x) => s + Number(x.amount || 0), 0);
-const prevMonth = m => { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo - 2, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
-const lastMonth = () => prevMonth(today().slice(0, 7));
-window.MD.lastMonth = lastMonth;
+// recap runs per pay period (pay day to the day before the next)
+const per = from => window.MD.periodOf(from);
+const prevPeriod = p => per(addDays(p.from, -1));
+const lastPeriod = () => prevPeriod(per(today()));
+window.MD.lastPeriod = lastPeriod;
+const inRange = (p, d) => d >= p.from && d <= p.to;
 
-function stats(m) {
-  const tx = (S.tx || []).filter(t => t.date.startsWith(m));
+function stats(p) {
+  const tx = (S.tx || []).filter(t => inRange(p, t.date));
   const exp = tx.filter(t => t.type === "expense");
   const byCat = {};
   exp.forEach(t => { const k = t.category_id || "none"; byCat[k] = (byCat[k] || 0) + Number(t.amount); });
   const top = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => [(S.categories || []).find(c => c.id === k)?.name || "No category", v]);
-  const [y, mo] = m.split("-").map(Number), dim = new Date(y, mo, 0).getDate();
   const kinds = { work: 0, oncall: 0, leave: 0, holiday: 0, off: 0 };
-  for (let d = 1; d <= dim; d++) kinds[window.MD.dayInfo(`${m}-${pad(d)}`).kind]++;
-  const topics = (S.topics || []).filter(t => t.done_at && ymd(new Date(t.done_at)).startsWith(m));
+  for (let d = p.from; d <= p.to; d = addDays(d, 1)) kinds[window.MD.dayInfo(d).kind]++;
+  const doneIn = x => x && inRange(p, ymd(new Date(x)));
+  const topics = (S.topics || []).filter(t => doneIn(t.done_at));
   return {
     income: sum(tx.filter(t => t.type === "income")), spent: sum(exp), saved: sum(tx.filter(t => t.type === "saving")),
     top, bills: exp.filter(t => t.bill_id).length, billsAmt: sum(exp.filter(t => t.bill_id)), kinds,
-    plans: (S.plans || []).filter(p => p.date.startsWith(m)).length,
-    todos: (S.todos || []).filter(t => t.done_at && ymd(new Date(t.done_at)).startsWith(m)).length,
-    topics, minutes: window.MD.studyMinutesIn ? window.MD.studyMinutesIn(m) : 0
+    plans: (S.plans || []).filter(x => inRange(p, x.date)).length,
+    todos: (S.todos || []).filter(t => doneIn(t.done_at)).length,
+    topics
   };
 }
-function recapSheet(m = lastMonth()) {
-  const [y, mo] = m.split("-").map(Number), s = stats(m), p = stats(prevMonth(m));
-  const diff = s.spent - p.spent, hasPrev = p.spent > 0;
+function recapSheet(from) {
+  const p = from ? per(from) : lastPeriod();
+  if (!p.to) p.to = today();
+  const s = stats(p), pp = prevPeriod(p), ps = stats(pp), last = lastPeriod();
+  const diff = s.spent - ps.spent, hasPrev = ps.spent > 0;
   const tile = (n, l) => `<div class="stat" style="text-align:left"><b>${n}</b><span class="tiny muted">${l}</span></div>`;
-  openSheet(`<div class="between"><div><div class="lbl" style="margin:0">MONTHLY RECAP</div><h2 class="h1" style="font-size:24px">${MONL[mo - 1]} ${y}</h2></div>
-      <div class="row"><button class="iconbtn" data-rm="${prevMonth(m)}" aria-label="Previous month">${I.left}</button>${m < lastMonth() ? `<button class="iconbtn" data-rm="${(() => { const d = new Date(y, mo, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; })()}" aria-label="Next month">${I.right}</button>` : ""}</div></div>
+  openSheet(`<div class="between"><div><div class="lbl" style="margin:0">PAY PERIOD RECAP</div><h2 class="h1" style="font-size:21px">${esc(window.MD.fmtPeriod(p))}</h2></div>
+      <div class="row"><button class="iconbtn" data-rm="${pp.from}" aria-label="Previous pay period">${I.left}</button>${p.from < last.from ? `<button class="iconbtn" data-rm="${addDays(p.to, 1)}" aria-label="Next pay period">${I.right}</button>` : ""}</div></div>
     <div class="card leave" style="margin-top:14px">
-      <div class="between" style="font-size:11.5px"><div><div class="muted">Income</div><div style="font-size:15px;font-weight:600;color:#BFE3C9">${rm(s.income)}</div></div>
-      <div><div class="muted">Spent</div><div style="font-size:15px;font-weight:600;color:#F3B7B7">${rm(s.spent)}</div></div>
-      <div><div class="muted">Saved</div><div style="font-size:15px;font-weight:600;color:#F6D86B">${rm(s.saved)}</div></div></div>
-      ${hasPrev ? `<div class="small muted" style="margin-top:10px">${diff <= 0 ? `You spent ${rm(-diff)} less than ${MONL[(mo + 10) % 12]}.` : `You spent ${rm(diff)} more than ${MONL[(mo + 10) % 12]}.`}</div>` : ""}</div>
+      <div class="between" style="font-size:10.5px"><div><div class="muted">Income</div><div style="font-size:14px;font-weight:600;color:#BFE3C9">${rm(s.income)}</div></div>
+      <div><div class="muted">Spent</div><div style="font-size:14px;font-weight:600;color:#F3B7B7">${rm(s.spent)}</div></div>
+      <div><div class="muted">Saved</div><div style="font-size:14px;font-weight:600;color:#F6D86B">${rm(s.saved)}</div></div></div>
+      ${hasPrev ? `<div class="small muted" style="margin-top:10px">${diff <= 0 ? `You spent ${rm(-diff)} less than the pay period before.` : `You spent ${rm(diff)} more than the pay period before.`}</div>` : ""}</div>
     ${s.top.length ? `<div class="lbl">Where it went</div><div class="list">${s.top.map(([n, v], i) => `<div class="item"><div class="grow">${i + 1}. ${esc(n)}</div><span class="small">${rm(v)}</span></div>`).join("")}</div>` : ""}
     ${s.bills ? `<p class="small muted" style="margin:8px 2px">${s.bills} bill${s.bills > 1 ? "s" : ""} paid, ${rm(s.billsAmt)} in total.</p>` : ""}
-    <div class="lbl">Your month</div>
+    <div class="lbl">Your days</div>
     <div class="stats" style="margin-top:0">${tile(s.kinds.work, "work days")}${tile(s.kinds.oncall, "on-calls")}${tile(s.kinds.leave, "leave days")}</div>
     <div class="stats" style="margin-top:0">${tile(s.plans, "plans")}${tile(s.todos, "to-dos done")}${tile(s.topics.length, "topics bloomed")}</div>
     ${s.topics.length ? `<div class="lbl">What you learned</div><div class="list">${s.topics.map(t => `<div class="item"><div class="grow">${esc(t.title)}</div></div>`).join("")}</div>` : ""}
     ${(S.goals || []).filter(g => !g.done_at).length ? `<div class="lbl">Goals</div><div class="list">${S.goals.filter(g => !g.done_at).map(g => { const sv = window.MD.goalSaved(g); return `<div class="item"><div class="grow">${esc(g.name)}</div><span class="small">${Math.floor(Math.min(100, sv / g.target * 100))}%</span></div>`; }).join("")}</div>` : ""}
     <p class="serif muted" style="text-align:center;margin:18px 0 4px">little by little, it adds up</p>`, sh => {
-    sh.querySelectorAll("[data-rm]").forEach(b => b.onclick = async () => { const nm = b.dataset.rm; if (window.MD.ensureMonth) await window.MD.ensureMonth(nm).catch(() => {}); recapSheet(nm); });
+    sh.querySelectorAll("[data-rm]").forEach(b => b.onclick = async () => { const nf = b.dataset.rm; if (window.MD.ensureMonth) await window.MD.ensureMonth(per(nf).from.slice(0, 7)).catch(() => {}); recapSheet(nf); });
   });
 }
 window.MD.recapSheet = recapSheet;

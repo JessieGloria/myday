@@ -8,7 +8,22 @@ const rm0 = n => "RM " + Math.round(Number(n || 0)).toLocaleString("en-MY");
 const sum = (a, f = x => x.amount) => a.reduce((s, x) => s + Number(f(x) || 0), 0);
 const CCOL = { lavender: "var(--peri)", sage: "var(--sage)", sun: "#E5B93A", rose: "var(--rose)", navy: "var(--navy)" };
 const curMonth = () => today().slice(0, 7);
-S.moneyMonth = S.moneyMonth || curMonth();
+/* money runs pay day to pay day: S.moneyFrom is the start of the period on screen */
+const nextMonth = m => { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
+const monthEnd = m => { const [y, mo] = m.split("-").map(Number); return `${m}-${pad(new Date(y, mo, 0).getDate())}`; };
+function periodOf(d) {
+  const L = (S.payDates || []).map(p => p.date).sort(); let from = null, next = null;
+  for (const x of L) { if (x <= d) from = x; else { next = x; break; } }
+  if (!from) { const m = d.slice(0, 7), end = monthEnd(m); return { from: `${m}-01`, to: next && next <= end ? addDays(next, -1) : end }; }
+  return { from, to: next ? addDays(next, -1) : null };
+}
+const curPeriod = () => periodOf(today());
+const P = () => periodOf(S.moneyFrom || today());
+const inP = (p, d) => d >= p.from && (!p.to || d <= p.to);
+const periodTx = p => S.tx.filter(t => inP(p, t.date));
+const fmtP = p => `${fmtShort(p.from).replace(/^\w+ /, "")} – ${p.to ? fmtShort(p.to).replace(/^\w+ /, "") : "next pay day"}`;
+window.MD.periodOf = periodOf; window.MD.fmtPeriod = p => fmtP(p);
+S.moneyFrom = S.moneyFrom || null;
 S.moneyView = S.moneyView || "overview";
 S.histFilter = S.histFilter || "all";
 
@@ -59,9 +74,8 @@ const cat = id => S.categories.find(c => c.id === id);
 const acc = id => S.accounts.find(a => a.id === id);
 const expCats = () => S.categories.filter(c => c.kind === "expense");
 const incCats = () => S.categories.filter(c => c.kind === "income");
-const monthTx = m => S.tx.filter(t => t.date.startsWith(m));
-function totals(m) {
-  const t = monthTx(m);
+function totals(p) {
+  const t = periodTx(p);
   return { income: sum(t.filter(x => x.type === "income")), spent: sum(t.filter(x => x.type === "expense")), saved: sum(t.filter(x => x.type === "saving")) };
 }
 const savingsAccounts = () => S.accounts.filter(a => a.kind === "savings");
@@ -106,14 +120,16 @@ function totalCard() {
   const all = [...banks, ...sav]; if (!all.length) return "";
   const held = heldForOthers(), total = all.reduce((s, x) => s + x.bal, 0) - held;
   const owed = cardOwed().reduce((s, x) => s + Math.max(0, x.owed), 0);
+  const todo = billsInPeriod(curPeriod()).filter(x => !x.paid), still = sum(todo, myPart);
   const pos = all.filter(x => x.bal > 0), ptot = pos.reduce((s, x) => s + x.bal, 0) || 1;
-  const m = S.moneyMonth;
+  const pp = curPeriod();
   return `<div class="card totalcard">
     <div class="between"><div><div class="lbl" style="margin:0 0 2px">TOTAL MONEY</div>
       <div class="totalnum">${total < 0 ? "−" : ""}${rm(Math.abs(total))}</div>
       ${owed ? `<div class="small muted">After card: <b style="color:var(--ink)">${rm(total - owed)}</b></div>` : ""}</div>${window.ART.jar(52)}</div>
+    ${todo.length ? `<button class="stillpay" id="mstill"><span class="sp-ic">${I.cal}</span><span class="grow"><span class="small">Still to pay this period</span><span class="tiny muted"> · ${todo.length} bill${todo.length === 1 ? "" : "s"}</span><br><span class="tiny muted">After this period's bills: <b style="color:var(--ink)">${rm(total - owed - still)}</b></span></span><b>${rm(still)}</b></button>` : ""}
     <div class="segbar">${pos.map(x => `<i style="width:${x.bal / ptot * 100}%;background:${ACOL(x.a)}"></i>`).join("")}</div>
-    <div class="acclegend">${all.map(x => `<${x.sav ? `button data-savacc="${x.a.id}"` : "div"} class="accrow"><span class="accdot" style="background:${ACOL(x.a)}"></span><span class="grow small">${esc(x.a.name)}${x.sav ? (s => s ? ` <span class="tiny muted">· +${rm0(s)} this month</span>` : "")(sum(monthTx(m).filter(t => t.type === "saving" && t.to_account_id === x.a.id))) : ""}</span><b class="small ${x.bal < 0 ? "neg" : ""}">${x.bal < 0 ? "−" : ""}${rm(Math.abs(x.bal))}</b></${x.sav ? "button" : "div"}>`).join("")}</div>
+    <div class="acclegend">${all.map(x => `<${x.sav ? `button data-savacc="${x.a.id}"` : "div"} class="accrow"><span class="accdot" style="background:${ACOL(x.a)}"></span><span class="grow small">${esc(x.a.name)}${x.sav ? (s => s ? ` <span class="tiny muted">· +${rm0(s)} this pay</span>` : "")(sum(periodTx(pp).filter(t => t.type === "saving" && t.to_account_id === x.a.id))) : ""}</span><b class="small ${x.bal < 0 ? "neg" : ""}">${x.bal < 0 ? "−" : ""}${rm(Math.abs(x.bal))}</b></${x.sav ? "button" : "div"}>`).join("")}</div>
     ${held ? `<div class="tiny muted" style="margin-top:6px">${rm(held)} from others for shared bills isn't counted.</div>` : ""}
   </div>`;
 }
@@ -143,9 +159,17 @@ function billsFor(m) {
     const coll = (b.people || []).map(name => ({ name, tx: S.tx.find(x => x.bill_id === b.id && x.bill_period === m && x.type === "collect" && x.payee === name) }));
     const days = Math.round((parse(due) - parse(t)) / 864e5);
     const status = paid ? "paid" : days < 0 ? "late" : days <= 7 ? "soon" : "later";
-    return { b, due, paid, pass, coll, days, status };
+    return { b, due, paid, pass, coll, days, status, m };
   }).sort((a, b) => a.due.localeCompare(b.due));
 }
+// bills whose due date falls inside a pay period (a period can touch two calendar months)
+function billsInPeriod(p) {
+  const end = p.to || addDays(p.from, 31), out = [];
+  for (let m = p.from.slice(0, 7); m <= end.slice(0, 7); m = nextMonth(m)) out.push(...billsFor(m));
+  return out.filter(x => x.due >= p.from && x.due <= end).sort((a, b) => a.due.localeCompare(b.due));
+}
+const myPart = x => (x.b.people || []).length ? Number(x.b.share_amount || 0) : Number(x.b.amount || 0);
+const billMonth = b => (S.tab === "money" ? billsInPeriod(P()).find(x => x.b.id === b.id)?.m : null) || curMonth();
 const billPill = x => x.status === "paid" ? `<span class="pill sage">Paid</span>` : x.status === "late" ? `<span class="pill rose">${-x.days} day${x.days === -1 ? "" : "s"} late</span>` : x.status === "soon" ? `<span class="pill warn">${x.days === 0 ? "Today" : x.days === 1 ? "Tomorrow" : `in ${x.days} days`}</span>` : `<span class="pill">${fmtShort(x.due)}</span>`;
 window.MD.moneyToday = () => sum(S.tx.filter(t => t.type === "expense" && t.date === today()));
 window.MD.billsDueSoon = () => { const w = new Set(rentWaiting().map(r => r.x.b.id)); return billsFor(curMonth()).filter(x => (x.status === "late" || x.status === "soon") && !w.has(x.b.id)); };
@@ -169,9 +193,9 @@ function txRow(t) {
     <span style="font-weight:600;${col}">${sign} ${rm(t.amount)}</span></button>`;
 }
 function monthHeader() {
-  const [y, m] = S.moneyMonth.split("-").map(Number);
-  return `<div class="top"><div><h1 class="h1">Money</h1><div class="small muted">${MONL[m - 1]} ${y}${S.moneyMonth === curMonth() ? " so far" : ""}</div></div>
-    <div class="row"><button class="iconbtn" id="mprev" aria-label="Previous month">${I.left}</button><button class="iconbtn" id="mnext" aria-label="Next month">${I.right}</button><button class="iconbtn" id="msetup" aria-label="Categories">${I.gear}</button></div></div>
+  const p = P(), cur = p.from === curPeriod().from;
+  return `<div class="top"><div><h1 class="h1">Money</h1><div class="small muted">${fmtP(p)}${cur ? " · so far" : ""}</div></div>
+    <div class="row"><button class="iconbtn" id="mprev" aria-label="Previous pay period">${I.left}</button><button class="iconbtn" id="mnext" aria-label="Next pay period" ${p.to ? "" : "disabled style=\"opacity:.35\""}>${I.right}</button><button class="iconbtn" id="msetup" aria-label="Categories">${I.gear}</button></div></div>
     <div class="seg" style="margin-top:4px">${[["overview", "Overview"], ["history", "History"], ["bills", "Bills"]].map(([k, l]) => `<button data-mv="${k}" class="${S.moneyView === k ? "on" : ""}">${l}</button>`).join("")}</div>`;
 }
 function viewMoney() {
@@ -179,23 +203,24 @@ function viewMoney() {
   return monthHeader() + ({ overview: viewOverview, history: viewHistory, bills: viewBills }[S.moneyView])();
 }
 function viewOverview() {
-  const m = S.moneyMonth, tt = totals(m), budget = Number(S.settings.monthly_budget || 0);
+  const p = P(), tt = totals(p), budget = Number(S.settings.monthly_budget || 0);
   const review = S.tx.filter(t => t.needs_review);
   const spentOnly = !budget && !tt.income;  // no income or budget yet: just show what you've spent
   const left = budget ? budget - tt.spent : spentOnly ? tt.spent : tt.income - tt.spent - tt.saved;
   const owed = cardOwed().filter(x => Math.abs(x.owed) > 0.004);
-  const bills = billsFor(m).filter(x => x.status !== "paid");
-  const cats = expCats().map(c => ({ c, spent: sum(monthTx(m).filter(t => t.type === "expense" && t.category_id === c.id)), budget: Number(c.budget || 0) }))
+  const bills = billsInPeriod(p).filter(x => x.status !== "paid");
+  const cats = expCats().map(c => ({ c, spent: sum(periodTx(p).filter(t => t.type === "expense" && t.category_id === c.id)), budget: Number(c.budget || 0) }))
     .filter(x => x.spent || x.budget).sort((a, b) => b.spent - a.spent);
-  const unc = sum(monthTx(m).filter(t => t.type === "expense" && !t.category_id));
+  const unc = sum(periodTx(p).filter(t => t.type === "expense" && !t.category_id));
   const bar = (spent, bud) => { const p = bud ? spent / bud : 0, col = !bud ? "var(--lav2)" : p > 1 ? "#D86A6A" : p > .8 ? "#E5B93A" : "var(--peri)";
     return `<div class="bar"><i style="width:${bud ? Math.min(100, p * 100) : 100}%;background:${col}"></i></div>`; };
-  const recent = monthTx(m).slice(0, 6);
+  const recent = periodTx(p).slice(0, 6);
   return `
   ${review.length ? `<button class="card between" id="mreview" style="width:100%;text-align:left;background:var(--sunbg);border:none;margin-bottom:12px"><div><div class="h2" style="color:var(--sunink)">${review.length} to check</div><div class="small" style="color:var(--sunink)">Saved from your screenshots. Tap to confirm.</div></div><span style="color:var(--sunink)">${I.right.replace("<svg", '<svg width="20" height="20"')}</span></button>` : ""}
   ${totalCard()}
+  <div class="mact">${[["expense", "Spent", I.coin, "var(--rosebg)"], ["income", "Income", I.plus, "var(--sagebg)"], ["saving", "Saved", I.target || I.plus, "var(--sunbg)"]].map(([k, l, ic, bg]) => `<button data-madd="${k}"><span class="qi" style="background:${bg}">${ic}</span>${l}</button>`).join("")}</div>
   <div class="card leave" style="padding:16px 18px;margin-top:10px">
-    <div class="between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">${budget ? "LEFT TO SPEND" : spentOnly ? "SPENT THIS MONTH" : "BALANCE THIS MONTH"}</div>
+    <div class="between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">${budget ? "LEFT TO SPEND THIS PAY" : spentOnly ? "SPENT THIS PAY" : "BALANCE THIS PAY"}</div>
     <div style="font-size:29px;font-weight:600;font-family:Nunito,Inter,sans-serif;${left < 0 && !spentOnly ? "color:#F3B7B7" : ""}">${left < 0 && !spentOnly ? "−" : ""}${rm(Math.abs(left))}</div></div>${window.ART.jar(58)}</div>
     ${budget ? `<div class="tiny muted">of ${rm0(budget)} budget</div><div class="bar" style="background:#3E4480;margin-top:8px"><i class="ringless" style="width:${Math.min(100, tt.spent / budget * 100)}%;background:${tt.spent > budget ? "#F3B7B7" : "#F6D86B"}"></i></div>` : ""}
     <div class="between" style="margin-top:14px;font-size:10.5px">
@@ -208,16 +233,16 @@ function viewOverview() {
     <div class="list">${bills.slice(0, 4).map(x => `<button class="item" style="width:100%;text-align:left" data-bill="${x.b.id}"><div class="grow"><div class="title">${esc(x.b.name)}</div><div class="tiny muted">${x.b.amount ? rm(x.b.amount) : "Amount varies"} · due ${fmtShort(x.due)}${(x.b.people || []).length ? ` · collected ${x.coll.filter(c => c.tx).length}/${x.coll.length}` : ""}</div></div>${billPill(x)}</button>`).join("")}</div>` : ""}
   <div class="between"><div class="lbl">Spending by category</div><span><button class="small" style="color:var(--peri);margin-right:12px" id="mrecap">Recap</button><button class="small" style="color:var(--peri)" id="mbud">Budgets</button></span></div>
   ${cats.length || unc ? `<div class="card">${cats.map(x => `<div style="margin:6px 0 12px"><div class="between small"><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${CCOL[x.c.color]};margin-right:6px"></span>${esc(x.c.name)}</span><span>${rm(x.spent)}${x.budget ? `<span class="muted"> / ${rm0(x.budget)}</span>` : ""}</span></div>${bar(x.spent, x.budget)}</div>`).join("")}
-    ${unc ? `<div class="between small" style="margin:6px 0"><span class="muted">No category yet</span><span>${rm(unc)}</span></div>` : ""}</div>` : '<div class="empty">No spending yet this month.</div>'}
+    ${unc ? `<div class="between small" style="margin:6px 0"><span class="muted">No category yet</span><span>${rm(unc)}</span></div>` : ""}</div>` : '<div class="empty">No spending yet this pay period.</div>'}
   <div class="between"><div class="lbl">Recent</div>${recent.length ? '<button class="small" style="color:var(--peri)" data-mv="history">See all</button>' : ""}</div>
-  ${recent.length ? `<div class="list">${recent.map(txRow).join("")}</div>` : '<div class="empty">Tap + to add income or an expense, or send a screenshot.</div>'}`;
+  ${recent.length ? `<div class="list">${recent.map(txRow).join("")}</div>` : '<div class="empty">Use the buttons above to add spending or income, or send a screenshot.</div>'}`;
 }
 function viewHistory() {
-  const f = S.histFilter, all = monthTx(S.moneyMonth).filter(t => f === "all" || t.type === f || (f === "saving" && t.type === "card_payment"));
+  const f = S.histFilter, all = periodTx(P()).filter(t => f === "all" || t.type === f || (f === "saving" && t.type === "card_payment"));
   const days = [...new Set(all.map(t => t.date))];
   return `<div class="paint" style="margin-top:0">${[["all", "All"], ["expense", "Spent"], ["income", "Income"], ["saving", "Saved & card"]].map(([k, l]) => `<button data-hf="${k}" class="${f === k ? "on" : ""}">${l}</button>`).join("")}</div>
    ${days.length ? days.map(d => { const a = all.filter(t => t.date === d), sp = sum(a.filter(t => t.type === "expense"));
-     return `<div class="between"><div class="lbl">${esc(relDay(d))}</div>${sp ? `<span class="tiny muted" style="margin-top:10px">spent ${rm(sp)}</span>` : ""}</div><div class="list">${a.map(txRow).join("")}</div>`; }).join("") : '<div class="empty">Nothing here for this month.</div>'}`;
+     return `<div class="between"><div class="lbl">${esc(relDay(d))}</div>${sp ? `<span class="tiny muted" style="margin-top:10px">spent ${rm(sp)}</span>` : ""}</div><div class="list">${a.map(txRow).join("")}</div>`; }).join("") : '<div class="empty">Nothing here for this pay period.</div>'}`;
 }
 function sharedBlock(x) {
   const b = x.b, share = Number(b.share_amount || 0), got = x.coll.filter(c => c.tx).length, need = x.coll.length;
@@ -229,20 +254,19 @@ function sharedBlock(x) {
     <div class="tiny muted" style="margin-top:6px">Your share ${rm(share)} counts as spending. The others' money just passes through your account.</div></div>`;
 }
 function viewBills() {
-  const list = billsFor(S.moneyMonth), others = S.bills.filter(b => !list.some(x => x.b.id === b.id));
-  const myPart = x => (x.b.people || []).length ? Number(x.b.share_amount || 0) : Number(x.b.amount || 0);
+  const list = billsInPeriod(P()), others = S.bills.filter(b => !list.some(x => x.b.id === b.id));
   const total = sum(list, myPart), paid = sum(list.filter(x => x.paid), x => x.paid.amount);
-  return `<div class="card between"><div><div class="small muted">Your bills this month</div><div class="h2">${rm(paid)} paid <span class="muted" style="font-weight:400">of ~${rm(total)}</span></div></div><button class="btn sun" id="addbill">+ Bill</button></div>
-    <div class="lbl">Due this month</div>
+  return `<div class="card between"><div><div class="small muted">Your bills this pay period</div><div class="h2">${rm(paid)} paid <span class="muted" style="font-weight:400">of ~${rm(total)}</span></div></div><button class="btn sun" id="addbill">+ Bill</button></div>
+    <div class="lbl">Due ${esc(fmtP(P()))}</div>
     ${list.length ? list.map(x => `<div class="card billcard"><div class="row"><button class="grow" style="text-align:left;flex:1;min-width:0" data-bill="${x.b.id}"><div class="h2" style="font-size:14px">${esc(x.b.name)}${(x.b.people || []).length ? ` <span class="pill">shared</span>` : ""}</div>
-      <div class="tiny muted">${x.paid ? `${x.b.auto_pay ? "charged" : "paid"} ${rm(Number(x.paid.amount) + Number(x.pass?.amount || 0))} on ${fmtShort(x.paid.date)}` : `${x.b.amount ? rm(x.b.amount) : "Amount varies"} · ${x.b.auto_pay ? "charged to " + esc(acc(x.b.account_id)?.name || "card") : x.b.due_on_payday ? "due on pay day" : "due"} ${fmtShort(x.due)}`}${instNo(x.b, S.moneyMonth) ? ` · ${instNo(x.b, S.moneyMonth)} of ${x.b.installments_total}` : ""}</div></button>
+      <div class="tiny muted">${x.paid ? `${x.b.auto_pay ? "charged" : "paid"} ${rm(Number(x.paid.amount) + Number(x.pass?.amount || 0))} on ${fmtShort(x.paid.date)}` : `${x.b.amount ? rm(x.b.amount) : "Amount varies"} · ${x.b.auto_pay ? "charged to " + esc(acc(x.b.account_id)?.name || "card") : x.b.due_on_payday ? "due on pay day" : "due"} ${fmtShort(x.due)}`}${instNo(x.b, x.m) ? ` · ${instNo(x.b, x.m)} of ${x.b.installments_total}` : ""}</div></button>
       ${x.paid ? billPill(x) : x.b.auto_pay ? `<span class="pill">Auto</span>` : `<button class="btn" style="height:34px" data-paybill="${x.b.id}">Paid</button>`}</div>
       ${(x.b.people || []).length ? sharedBlock(x) : ""}</div>`).join("") : '<div class="empty">No bills yet. Add the ones you pay every month, like your phone plan or rent.</div>'}
-    ${others.length ? `<div class="lbl">Yearly, not due this month</div><div class="list">${others.map(b => `<button class="item" style="width:100%;text-align:left" data-bill="${b.id}"><div class="grow"><div class="title">${esc(b.name)}</div><div class="tiny muted">${MONL[(b.due_month || 1) - 1]} ${b.due_day}${b.amount ? " · " + rm(b.amount) : ""}</div></div></button>`).join("")}</div>` : ""}
+    ${others.length ? `<div class="lbl">Not due this pay period</div><div class="list">${others.map(b => `<button class="item" style="width:100%;text-align:left" data-bill="${b.id}"><div class="grow"><div class="title">${esc(b.name)}</div><div class="tiny muted">${b.frequency === "yearly" ? `${MONL[(b.due_month || 1) - 1]} ${b.due_day}` : b.due_on_payday ? "on pay day" : `every month, day ${b.due_day}`}${b.amount ? " · " + rm(b.amount) : ""}</div></div></button>`).join("")}</div>` : ""}
     <p class="tiny faint" style="text-align:center;margin-top:14px">Tapping Paid saves the bill as spending. "Auto" ones are added by themselves on their date and go onto your card.</p>`;
 }
 async function toggleCollect(billId, name) {
-  const b = S.bills.find(x => x.id === billId), m = S.moneyMonth;
+  const b = S.bills.find(x => x.id === billId), m = billMonth(b);
   const ex = S.tx.find(x => x.bill_id === b.id && x.bill_period === m && x.type === "collect" && x.payee === name);
   if (ex) { try { await db.remove("myday_transactions", ex.id); S.tx = S.tx.filter(x => x !== ex); render(); toast(`${name}: marked not paid`); } catch (e) { fail(e); } return; }
   // ask which account it came into, remembering where this person paid last time
@@ -258,7 +282,9 @@ async function toggleCollect(billId, name) {
   });
 }
 function bindMoney() {
-  const mv = n => { const [y, m] = S.moneyMonth.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); S.moneyMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; if (S.moneyMonth < S.txFrom) { S.moneyLoading = true; render(); } ensureMonth(S.moneyMonth).then(() => { S.moneyLoading = false; render(); }).catch(e => { S.moneyLoading = false; fail(e); }); };
+  const mv = n => { const p = P(); if (n > 0 && !p.to) return; const np = periodOf(n < 0 ? addDays(p.from, -1) : addDays(p.to, 1));
+    S.moneyFrom = np.from === curPeriod().from ? null : np.from; const m = np.from.slice(0, 7);
+    if (m < S.txFrom) { S.moneyLoading = true; render(); } ensureMonth(m).then(() => { S.moneyLoading = false; render(); }).catch(e => { S.moneyLoading = false; fail(e); }); };
   $("#mprev").onclick = () => mv(-1); $("#mnext").onclick = () => mv(1);
   $("#msetup").onclick = setupSheet;
   document.querySelectorAll("[data-mv]").forEach(b => b.onclick = () => { S.moneyView = b.dataset.mv; render(); window.scrollTo(0, 0); });
@@ -272,7 +298,9 @@ function bindMoney() {
   const r = $("#mreview"); if (r) r.onclick = nextReview;
   document.querySelectorAll("[data-savacc]").forEach(b => b.onclick = () => savAccSheet(acc(b.dataset.savacc)));
   const bu = $("#mbud"); if (bu) bu.onclick = budgetSheet;
-  const rc = $("#mrecap"); if (rc) rc.onclick = () => window.MD.recapSheet(S.moneyMonth < today().slice(0, 7) ? S.moneyMonth : window.MD.lastMonth());
+  const rc = $("#mrecap"); if (rc) rc.onclick = () => { const p = P(); window.MD.recapSheet(p.from === curPeriod().from ? null : p.from); };
+  document.querySelectorAll("[data-madd]").forEach(b => b.onclick = () => txSheet(null, { type: b.dataset.madd }));
+  const ms = $("#mstill"); if (ms) ms.onclick = () => { S.moneyFrom = null; S.moneyView = "bills"; render(); window.scrollTo(0, 0); };
   const ab = $("#addbill"); if (ab) ab.onclick = () => billSheet(null);
 }
 
@@ -408,7 +436,7 @@ function billSheet(b) {
   });
 }
 function payBill(b) {
-  const m = S.moneyView === "bills" || S.tab === "money" ? S.moneyMonth : today().slice(0, 7);
+  const m = billMonth(b);
   if (S.tx.some(x => x.bill_id === b.id && x.bill_period === m && x.type === "expense")) { toast("Already marked paid for this month"); return; }
   let aid = b.account_id || S.settings.default_account_id;
   const shared = (b.people || []).length, share = Number(b.share_amount || 0);
@@ -444,8 +472,8 @@ function passSheet(t) {
 /* ---------- budgets, accounts, shortcut ---------- */
 function budgetSheet() {
   const list = expCats();
-  openSheet(`<h2 class="h2">Budgets</h2><p class="small muted" style="margin:4px 0 14px">Set a monthly limit for the whole month and for any category. Leave empty for no limit.</p>
-    <div class="field"><label>Whole month (RM)</label><input type="number" inputmode="decimal" id="ob" value="${S.settings.monthly_budget ?? ""}" placeholder="No limit"></div>
+  openSheet(`<h2 class="h2">Budgets</h2><p class="small muted" style="margin:4px 0 14px">Set a limit for each pay period (pay day to the day before the next), overall and for any category. Leave empty for no limit.</p>
+    <div class="field"><label>Whole pay period (RM)</label><input type="number" inputmode="decimal" id="ob" value="${S.settings.monthly_budget ?? ""}" placeholder="No limit"></div>
     <div class="list">${list.map(c => `<div class="item"><span style="width:10px;height:10px;border-radius:50%;background:${CCOL[c.color]}"></span><div class="grow">${esc(c.name)}</div><input type="number" inputmode="decimal" data-cb="${c.id}" value="${c.budget ?? ""}" placeholder="—" style="width:110px;padding:7px 10px;text-align:right"></div>`).join("")}</div>
     <button class="btn primary block" id="bsv" style="margin-top:14px">Save budgets</button>`, sh => {
     $("#bsv").onclick = async () => {
