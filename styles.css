@@ -620,3 +620,9 @@ body{background:transparent!important}
 .hc.has .slotin{width:calc(100% - 8px)!important}
 .admincard .bigdays{font-size:14px;font-weight:700}
 .admincard .tiny{font-size:10px}
+
+/* ---------- v29: star inside the quick plan box ---------- */
+.slotwrap{position:relative;flex:1;margin-left:8px;animation:tabfade .18s ease}
+.slotwrap .slotin{margin-left:0!important;width:100%!important;padding-right:40px!important}
+.slotstar{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:32px;height:28px;border-radius:9px;font-size:17px;color:var(--ink3);display:flex;align-items:center;justify-content:center}
+.slotstar.on{color:#E5B93A;background:var(--sunbg);animation:pop .35s cubic-bezier(.3,1.7,.5,1)}

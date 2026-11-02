@@ -417,7 +417,7 @@ function typeDaySheet(date) {
     inp.oninput = show; setTimeout(() => inp.focus(), 350);
     $("#tdsave").onclick = async () => {
       const items = parsePlanText(inp.value); if (!items.length) { window.ART.nudge(inp, "Type at least one line"); return; }
-      try { const rows = await rest("POST", "myday_plans", items.map(x => ({ date, title: x.title.slice(0, 120), start_time: x.start, end_time: x.end, color: "lavender" })));
+      try { const rows = await rest("POST", "myday_plans", items.map(x => ({ date, title: x.title.slice(0, 120), start_time: x.start, end_time: x.end, color: autoColor(x.title, date, x.start) })));
         S.plans.push(...rows); closeSheet(); render(); toast(`${rows.length} plan${rows.length > 1 ? "s" : ""} added`); } catch (e) { fail(e); }
     };
   });
@@ -465,30 +465,52 @@ function bindPlan() {
   document.querySelectorAll("[data-auto]").forEach(b => b.onclick = () => daySheet(S.planDate));
   // type straight into the timeline: tap an hour, write, press return
   document.querySelectorAll("[data-slot]").forEach(b => b.onclick = () => {
-    const at = b.dataset.slot, inp = document.createElement("input");
-    inp.type = "text"; inp.className = "slotin"; inp.enterKeyHint = "done"; inp.autocomplete = "off";
+    const at = b.dataset.slot, wrap = document.createElement("div"), inp = document.createElement("input"), star = document.createElement("button");
+    wrap.className = "slotwrap"; inp.type = "text"; inp.className = "slotin"; inp.enterKeyHint = "done"; inp.autocomplete = "off";
     inp.placeholder = `What's at ${t12(at)}?`;
-    b.replaceWith(inp); inp.focus();
+    star.type = "button"; star.className = "slotstar"; star.textContent = "☆"; star.setAttribute("aria-label", "Important");
+    let imp = false;
+    const flip = e => { e.preventDefault(); imp = !imp; star.textContent = imp ? "★" : "☆"; star.classList.toggle("on", imp); inp.focus(); };
+    star.addEventListener("pointerdown", flip); star.addEventListener("click", e => e.preventDefault());
+    wrap.append(inp, star); b.replaceWith(wrap); inp.focus();
     let done = false;
     const save = async () => {
       if (done) return; done = true;
-      const v = inp.value.trim(); if (!v) { render(); return; }
+      let v = inp.value.trim(); if (/^\*/.test(v)) { imp = true; v = v.replace(/^\*+\s*/, ""); } if (!v) { render(); return; }
       // "7:30 Breakfast" or "7-8:30 Gym" keeps its own time; otherwise it uses the hour you tapped
       const parsed = /^\s*\d/.test(v) ? parsePlanText(v)[0] : null;
       const start = parsed?.start || at, end = parsed?.start ? parsed.end : `${pad((Number(at.slice(0, 2)) + 1) % 24)}:00`;
       inp.disabled = true;
-      try { const r = await db.insert("myday_plans", { date: S.planDate, title: (parsed?.start ? parsed.title : v).slice(0, 120), start_time: start, end_time: end, color: "lavender" });
+      const title = (parsed?.start ? parsed.title : v).slice(0, 120);
+      try { const r = await db.insert("myday_plans", { date: S.planDate, title, start_time: start, end_time: end, color: autoColor(title, S.planDate, start), important: imp });
         S.plans.push(r); window.ART.celebrate(`[data-plan="${r.id}"]`); render(); } catch (e) { done = false; inp.disabled = false; fail(e); }
     };
     inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); save(); } if (e.key === "Escape") { done = true; render(); } });
     inp.addEventListener("blur", save);
   });
 }
+/* plans get a colour from their words; anything else takes the next colour so neighbours differ */
+const AUTO_COL = [
+  ["sun", /(breakfast|lunch|dinner|brunch|makan|coffee|kopi|\beat\b|supper|tea time)/i],
+  ["sage", /(gym|walk|\brun|jog|yoga|swim|workout|exercise|pilates|badminton|hike)/i],
+  ["lavender", /(study|read|revise|revision|course|class|lecture|learn|exam)/i],
+  ["rose", /(\bwith\b|call|meet|mum|mummy|mom|dad|daddy|date|birthday|family|friend)/i],
+  ["navy", /(bill|bank|shop|grocer|laundry|clean|\bpay|errand|post office|car wash|service)/i]
+];
+const ROTATE = ["lavender", "sage", "sun", "rose", "navy"];
+function autoColor(title, date, start) {
+  const hit = AUTO_COL.find(([, re]) => re.test(title || "")); if (hit) return hit[0];
+  const day = S.plans.filter(p => p.date === date).sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
+  const prev = [...day].reverse().find(p => (p.start_time || "") <= (start || "")), next = day.find(p => (p.start_time || "") > (start || ""));
+  let i = day.length % ROTATE.length;
+  for (let k = 0; k < ROTATE.length; k++) { const c = ROTATE[(i + k) % ROTATE.length]; if (c !== prev?.color && c !== next?.color) return c; }
+  return ROTATE[i];
+}
 const COLORS = [["lavender", "var(--lav2)"], ["sage", "var(--sage)"], ["sun", "var(--sun)"], ["rose", "var(--rose)"], ["navy", "var(--navy)"]];
 function planSheet(p, date, at) {
   const endOf = t => t ? `${pad((Number(t.slice(0, 2)) + 1) % 24)}:${t.slice(3, 5)}` : "";
   const isNew = !p; p = p || { date: date || today(), title: "", start_time: at || "", end_time: endOf(at), note: "", color: "lavender" };
-  let color = p.color, important = !!p.important;
+  let color = p.color, important = !!p.important, picked = !!p.color_manual;
   openSheet(`<h2 class="h2" style="margin-bottom:14px">${isNew ? "Add a plan" : "Edit plan"}</h2>
     <div class="field"><label>What</label><input type="text" id="pt" value="${esc(p.title)}" placeholder="Dinner with Dad"></div>
     <div class="field"><label>Date</label><input type="date" id="pdt" value="${p.date}"></div>
@@ -500,11 +522,12 @@ function planSheet(p, date, at) {
     <div class="err" id="perr"></div>
     <button class="btn primary block" id="psave">${isNew ? "Add" : "Save"}</button>
     ${isNew ? "" : '<button class="btn danger block" id="pdel" style="margin-top:8px">Delete</button>'}`, sh => {
-    sh.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { color = b.dataset.c; sh.querySelectorAll("[data-c]").forEach(x => x.classList.toggle("on", x === b)); });
+    sh.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { color = b.dataset.c; picked = true; sh.querySelectorAll("[data-c]").forEach(x => x.classList.toggle("on", x === b)); });
     $("#pimp").onclick = () => { important = !important; const b = $("#pimp"); b.classList.toggle("on", important); $(".st", b).textContent = important ? "★" : "☆"; };
     $("#pt").focus();
     $("#psave").onclick = async () => {
-      const o = { title: $("#pt").value.trim(), date: $("#pdt").value, start_time: $("#ps").value || null, end_time: $("#pe").value || null, note: $("#pn").value.trim() || null, color, important };
+      const o = { title: $("#pt").value.trim(), date: $("#pdt").value, start_time: $("#ps").value || null, end_time: $("#pe").value || null, note: $("#pn").value.trim() || null, color, important, color_manual: picked };
+      if (!picked) o.color = autoColor(o.title, o.date, o.start_time ? o.start_time + ":00" : null);
       if (!o.title) { $("#perr").textContent = "Add what the plan is."; return; }
       if (!o.date) { $("#perr").textContent = "Pick a date."; return; }
       try {
@@ -750,7 +773,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 28 (recap so far, tidier planner)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 29 (auto colours, quick star)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);
