@@ -363,7 +363,7 @@ function dueSoon() {
   const lp = window.MD.lastPeriod && window.MD.periodOf ? window.MD.lastPeriod() : null;
   const recap = lp && window.MD.recapSheet && S.tx && addDays(lp.to, 7) >= today() && S.tx.some(t => t.date >= lp.from && t.date <= lp.to);
   return (items.length ? `<div class="lbl">Due soon</div><div class="list">${items.map(x => x[1]).join("")}</div>` : "")
-    + (recap ? `<button class="card between" id="recapcard" style="width:100%;text-align:left;margin-top:10px;background:var(--lav);border:none"><div><div class="h2">Your last pay period recap</div><div class="small muted">${recap ? esc(window.MD.fmtPeriod(lp)) + " · " : ""}money, days, and what you learned</div></div>${I.right.replace("<svg", '<svg width="20" height="20"')}</button>` : "");
+    + (recap ? `<button class="card between" id="recapcard" style="width:100%;text-align:left;margin-top:10px;background:var(--lav);border:none"><div><div class="h2">Your last pay period recap</div><div class="small muted">${recap ? esc(window.MD.fmtPeriod(lp)) + " · " : ""}money recap</div></div>${I.right.replace("<svg", '<svg width="20" height="20"')}</button>` : "");
 }
 function bindToday() {
   window.MD.bindExtraDue && window.MD.bindExtraDue();
@@ -441,7 +441,7 @@ function viewPlan() {
   const timed = plans.filter(p => p.start_time).sort((a, b) => a.start_time.localeCompare(b.start_time));
   const hours = timed.map(p => hr(p.start_time));
   const first = Math.min(6, ...hours), last = Math.max(23, ...hours);
-  const blk = p => `<button class="blk c-${p.color}" data-plan="${p.id}"><div class="bt">${esc(p.title)}</div><div class="bs">${t12(hhmm(p.start_time))}${p.end_time ? " – " + t12(hhmm(p.end_time)) : ""}${p.note ? " · " + esc(p.note) : ""}</div></button>`;
+  const blk = p => `<button class="blk c-${p.color}" data-plan="${p.id}"><div class="bt">${p.important ? '<span class="pstar">★</span>' : ""}${esc(p.title)}</div>${p.note ? `<div class="bs">${esc(p.note)}</div>` : ""}</button>`;
   let grid = "";
   for (let h = first; h <= last; h++) {
     const here = timed.filter(p => hr(p.start_time) === h);
@@ -450,11 +450,10 @@ function viewPlan() {
     grid += `<div class="hr ${inBand ? band.cls : ""} ${bandStart ? "bstart" : ""}"><div class="hl">${t12(pad(h % 24) + ":00")}</div><div class="hc">
       ${bandStart ? `<button class="bandtag" data-auto="1">${esc(band.label)} · ${band.label === "Work" ? `${t12(hhmm(st.work_start))}–${t12(hhmm(st.work_end))}` : "8am → 8am"}</button>` : ""}
       ${here.map(blk).join("")}
-      ${here.length ? "" : `<button class="slot" data-slot="${pad(h % 24)}:00" aria-label="Add at ${t12(pad(h % 24) + ":00")}"><span>+</span></button>`}</div></div>`;
+      <button class="slot ${here.length ? "more" : ""}" data-slot="${pad(h % 24)}:00" aria-label="Add at ${t12(pad(h % 24) + ":00")}"><span>+</span></button></div></div>`;
   }
   return `<div class="strip" id="strip">${strip}</div>
     <div class="between" style="margin:6px 2px 10px"><div class="h2">${esc(relDay(sel))}</div><span class="pill ${info.kind === "oncall" ? "navy" : info.kind === "leave" ? "sage" : info.kind === "work" ? "" : "warn"}">${esc(lab.title)}</span></div>
-    <p class="tiny muted" style="margin:-4px 2px 10px">Tap any hour and type. Tap a plan to change its time, colour or note.</p>
     ${info.prevOncall ? `<div class="tiny muted" style="margin:0 2px 8px">On-call from yesterday ends at 8am.</div>` : ""}
     ${anytime.length ? `<div class="lbl">Anytime</div><div class="anyt">${anytime.map(p => `<button class="blk c-${p.color}" data-plan="${p.id}"><div class="bt">${esc(p.title)}</div>${p.note ? `<div class="bs">${esc(p.note)}</div>` : ""}</button>`).join("")}</div>` : ""}
     <div class="hours" id="hours">${grid}</div>`;
@@ -489,21 +488,23 @@ const COLORS = [["lavender", "var(--lav2)"], ["sage", "var(--sage)"], ["sun", "v
 function planSheet(p, date, at) {
   const endOf = t => t ? `${pad((Number(t.slice(0, 2)) + 1) % 24)}:${t.slice(3, 5)}` : "";
   const isNew = !p; p = p || { date: date || today(), title: "", start_time: at || "", end_time: endOf(at), note: "", color: "lavender" };
-  let color = p.color;
+  let color = p.color, important = !!p.important;
   openSheet(`<h2 class="h2" style="margin-bottom:14px">${isNew ? "Add a plan" : "Edit plan"}</h2>
     <div class="field"><label>What</label><input type="text" id="pt" value="${esc(p.title)}" placeholder="Dinner with Dad"></div>
     <div class="field"><label>Date</label><input type="date" id="pdt" value="${p.date}"></div>
     <div class="two"><div class="field"><label>Start (optional)</label><input type="time" id="ps" value="${hhmm(p.start_time)}"></div>
     <div class="field"><label>End (optional)</label><input type="time" id="pe" value="${hhmm(p.end_time)}"></div></div>
     <div class="field"><label>Note</label><input type="text" id="pn" value="${esc(p.note || "")}" placeholder="Optional"></div>
+    <button type="button" class="startog ${p.important ? "on" : ""}" id="pimp"><span class="st">${p.important ? "★" : "☆"}</span><span><b>Important</b><br><span class="tiny muted">Shows in Coming up on the calendar</span></span></button>
     <div class="field"><label>Colour</label><div class="swatches">${COLORS.map(([k, c]) => `<button data-c="${k}" class="${k === color ? "on" : ""}" style="background:${c}" aria-label="${k}"></button>`).join("")}</div></div>
     <div class="err" id="perr"></div>
     <button class="btn primary block" id="psave">${isNew ? "Add" : "Save"}</button>
     ${isNew ? "" : '<button class="btn danger block" id="pdel" style="margin-top:8px">Delete</button>'}`, sh => {
     sh.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { color = b.dataset.c; sh.querySelectorAll("[data-c]").forEach(x => x.classList.toggle("on", x === b)); });
+    $("#pimp").onclick = () => { important = !important; const b = $("#pimp"); b.classList.toggle("on", important); $(".st", b).textContent = important ? "★" : "☆"; };
     $("#pt").focus();
     $("#psave").onclick = async () => {
-      const o = { title: $("#pt").value.trim(), date: $("#pdt").value, start_time: $("#ps").value || null, end_time: $("#pe").value || null, note: $("#pn").value.trim() || null, color };
+      const o = { title: $("#pt").value.trim(), date: $("#pdt").value, start_time: $("#ps").value || null, end_time: $("#pe").value || null, note: $("#pn").value.trim() || null, color, important };
       if (!o.title) { $("#perr").textContent = "Add what the plan is."; return; }
       if (!o.date) { $("#perr").textContent = "Pick a date."; return; }
       try {
@@ -536,8 +537,7 @@ function viewTodo() {
     ${sec("Today", todayL, x => todoRow(x, x.due_date < t && !x.done_at ? `<span class="pill warn" style="margin-top:4px">from ${esc(relDay(x.due_date))}</span>` : ""))}
     ${sec("Coming up", later, x => todoRow(x, `<span class="tiny muted">${esc(relDay(x.due_date))}</span>`))}
     ${sec("Anytime", anytime, x => todoRow(x))}
-    ${!todayL.length && !later.length && !anytime.length ? '<div class="empty">All clear. Add something you want to get done.</div>' : ""}
-    <p class="tiny faint" style="text-align:center;margin-top:14px">Unfinished to-dos move to the next day. Tap one to set a date.</p>`;
+    ${!todayL.length && !later.length && !anytime.length ? '<div class="empty">All clear. Add something you want to get done.</div>' : ""}`;
 }
 function bindTodo() {
   $("#tadd").onsubmit = async e => {
@@ -589,8 +589,7 @@ function viewBuy() {
     <div class="paint" style="margin-top:-4px">${groups.map(g => `<button type="button" data-bg="${esc(g)}" class="${g === buyGroup ? "on" : ""}">${esc(g)}</button>`).join("")}<button type="button" id="newg">+ Group</button></div>
     ${byG.map(([g, a]) => `<div class="lbl">${esc(g)}</div><div class="list">${a.map(row).join("")}</div>`).join("")}
     ${!open.length ? '<div class="empty">Your list is empty.</div>' : ""}
-    ${done.length ? `<div class="between"><div class="lbl">In the basket${total ? ` · RM ${total.toFixed(2)}` : ""}</div><button class="small" style="color:var(--peri)" id="clearb">Clear bought</button></div><div class="list">${done.map(row).join("")}</div>` : ""}
-    <p class="tiny faint" style="text-align:center;margin-top:14px">When you tick an item and add its price, it goes into Money as spending.</p>`;
+    ${done.length ? `<div class="between"><div class="lbl">In the basket${total ? ` · RM ${total.toFixed(2)}` : ""}</div><button class="small" style="color:var(--peri)" id="clearb">Clear bought</button></div><div class="list">${done.map(row).join("")}</div>` : ""}`;
 }
 function bindBuy() {
   document.querySelectorAll("[data-bg]").forEach(b => b.onclick = () => { buyGroup = b.dataset.bg; document.querySelectorAll("[data-bg]").forEach(x => x.classList.toggle("on", x === b)); });
@@ -635,7 +634,7 @@ function viewCalendar() {
   let cells = "";
   for (let i = 0; i < lead; i++) cells += `<button class="other" tabindex="-1"></button>`;
   for (let d = 1; d <= dim; d++) {
-    const ds = `${y}-${pad(m)}-${pad(d)}`, info = dayInfo(ds), hasPlan = S.plans.some(p => p.date === ds);
+    const ds = `${y}-${pad(m)}-${pad(d)}`, info = dayInfo(ds), hasPlan = S.plans.some(p => p.date === ds && p.important);
     const k = info.kind === "off" && info.override ? "off-x" : info.kind;
     cells += `<button data-day="${ds}" class="k-${k} ${ds === t ? "today" : ""}"><div class="num">${d}</div><div class="dots"><i style="background:${KCOL[info.kind]}"></i>${hasPlan ? '<i style="background:var(--rose)"></i>' : ""}${window.MD.isPayDay && window.MD.isPayDay(ds) ? '<i class="paydot"></i>' : ""}</div></button>`;
   }
@@ -651,7 +650,7 @@ function viewCalendar() {
     if (info.kind === "leave") { const last = [...up].reverse().find(x => x[4]); if (last && addDays(last[5], 1) === ds) { last[5] = ds; } else up.push([ds, "Annual leave", "sage", "Leave", true, ds]); }
     if (info.kind === "holiday") up.push([ds, info.holiday, "warn", "Public holiday"]);
     if (window.MD.isPayDay && window.MD.isPayDay(ds)) up.push([ds, "Pay day", "warn", "Salary"]);
-    S.plans.filter(p => p.date === ds).forEach(p => up.push([ds, p.title, "rose", p.start_time ? t12(hhmm(p.start_time)) : "Plan"]));
+    S.plans.filter(p => p.date === ds && p.important).forEach(p => up.push([ds, p.title, "rose", p.start_time ? t12(hhmm(p.start_time)) : "Plan"]));
   }
   return `<div class="top"><div><h1 class="h1">${MONL[m - 1]} <span class="muted" style="font-weight:300">${y}</span></h1><div class="small muted">Your shifts and plans</div></div>
     <div class="row"><button class="iconbtn" id="cprev" aria-label="Previous month">${I.left}</button><button class="iconbtn" id="cnext" aria-label="Next month">${I.right}</button><button class="iconbtn" id="gear" aria-label="Annual leave settings">${I.gear}</button></div></div>
@@ -751,7 +750,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 26 (carry over, tidier lists)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 27 (important plans, money recap)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);
@@ -776,7 +775,7 @@ function settingsSheet() {
     <div class="field"><label>Days per year</label><input type="number" id="sle" value="${st.leave_entitlement}"></div>
     <div class="field"><label>Days left on start date</label><input type="number" id="slb" value="${st.leave_opening_balance}"></div>
     <div class="field"><label>Start date for counting</label><input type="date" id="sld" value="${st.leave_opening_date}"></div>
-    <p class="tiny muted" style="margin:-4px 2px 10px">Unused leave carries over with no limit. Only work days count as leave.</p>
+    
     <button class="btn block" id="ssave">Save allowance</button>`, sh => {
     const workDays = () => { const f = $("#lf").value, t = $("#lt").value, out = []; if (!f || !t || t < f) return out;
       for (let d = f; d <= t; d = addDays(d, 1)) { if (baseKind(d) === "work") out.push(d); if (out.length > 60) break; } return out; };

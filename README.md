@@ -3,7 +3,7 @@
 Your personal planner: Today (plan, to do, to buy), Calendar (roster, leave, Sabah holidays).
 Money (step 2): income, spending, savings, budgets, bills, card owed, screenshot to expense.
 Goals (step 3): savings goals, wishlist, life admin reminders.
-Learn: study garden (topics grow from seed to bloom), study log, timer, streak. Plus monthly recap.
+Learn (step 3): weekly topics, notes, study timer, streak. Plus monthly recap and data backup in Settings.
 
 ## Put it online (same as Apolaki)
 
@@ -16,6 +16,6 @@ Sign in with your OMFS Desk email and password.
 
 ## Files
 
-- `index.html`, `styles.css`, `art.js`, `app.js`, `money.js`, `goals.js`, `learn.js`, `recap.js`: the app
+- `index.html`, `styles.css`, `app.js`, `money.js`, `goals.js`, `learn.js`, `recap.js`: the app
 - `config.js`: your Supabase connection
 - `manifest.json`, `sw.js`, `icons/`: home screen install

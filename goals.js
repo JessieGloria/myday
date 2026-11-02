@@ -103,8 +103,7 @@ function viewSavings() {
   return `${active.length ? `<div class="card leave between"><div><div class="lbl" style="margin:0 0 4px;color:var(--navytext)">SAVED TOWARDS GOALS</div><div style="font-size:23px;font-weight:700;font-family:Nunito,Inter,sans-serif">${rm(total)}</div><div class="small muted">${active.length} jar${active.length > 1 ? "s" : ""} filling up${(window.MD.savingsAccounts ? window.MD.savingsAccounts() : []).length ? " · kept in " + window.MD.savingsAccounts().map(x => x.a.name).join(", ") : ""}</div></div>${window.ART.jar(58)}</div><div style="height:10px"></div>` : ""}
     ${active.map(goalCard).join("") || '<div class="empty">Start a savings jar, like a trip or an emergency fund.</div>'}
     <button class="addline" id="addgoal">+ New savings jar</button>
-    ${done.length ? `<div class="lbl">Full jars</div>${done.map(goalCard).join("")}` : ""}
-    <p class="tiny faint" style="text-align:center;margin-top:10px">Savings you drop in here also show as "Saved" in Money.</p>`;
+    ${done.length ? `<div class="lbl">Full jars</div>${done.map(goalCard).join("")}` : ""}`;
 }
 function viewWish() {
   const open = S.wish.filter(w => !w.bought_at), bought = S.wish.filter(w => w.bought_at);
@@ -132,8 +131,7 @@ function viewAdmin() {
       ${r.done_at ? "" : `<button class="donebtn" data-remdone="${r.id}" aria-label="Mark done">${I.check}</button>`}</div>`; };
   return `<button class="btn block" id="addrem" style="margin-bottom:12px">+ Add reminder</button>
     ${open.map(card).join("") || '<div class="empty">Add renewals and due dates, like road tax, car insurance, or your APC.</div>'}
-    ${done.length ? `<div class="lbl">Done</div>${done.map(card).join("")}` : ""}
-    <p class="tiny faint" style="text-align:center;margin-top:14px">The little calendar gets worried as the date gets close. Ticking a yearly one moves it to next year.</p>`;
+    ${done.length ? `<div class="lbl">Done</div>${done.map(card).join("")}` : ""}`;
 }
 function bindGoals() {
   document.querySelectorAll("[data-gv]").forEach(b => b.onclick = () => { S.goalsView = b.dataset.gv; render(); });

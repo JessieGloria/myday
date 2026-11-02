@@ -90,8 +90,7 @@ function viewRoutines() {
       <div class="rname">${esc(r.name)}</div>
       <div class="rwhen ${s.mood}">${whenTxt(s.left)}</div>
       <button class="rdone" data-rdone="${r.id}">Done</button></div>`).join("")}</div>` : `<div class="empty">Add the little jobs that come back, like laundry or changing the litter box.</div>`}
-    <button class="addline" id="raddr" style="margin-top:12px">+ Add routine</button>
-    <p class="tiny faint" style="text-align:center;margin-top:10px">Tap Done when you've done it. Each one counts again from that day.</p>`;
+    <button class="addline" id="raddr" style="margin-top:12px">+ Add routine</button>`;
 }
 function bindRoutines() {
   document.querySelectorAll("[data-rout]").forEach(b => b.onclick = () => routineSheet(S.routines.find(r => r.id === b.dataset.rout)));
@@ -134,7 +133,7 @@ function routineSheet(r) {
     <div class="field"><label>Character</label><div class="rpick">${Object.entries(CHARS).map(([k, [lab]]) => `<button type="button" data-rch="${k}" class="${k === st.ch ? "on" : ""}" aria-label="${lab}">${character(k, "happy", 40)}</button>`).join("")}</div></div>
     <div class="field"><label>How often</label><div class="row" style="gap:8px"><span class="small">Every</span><input type="number" id="rn" min="1" max="365" value="${st.n}" style="width:70px">
       <div class="paint" style="margin:0">${["day", "week", "month"].map(u => `<button type="button" data-run="${u}" class="${u === st.unit ? "on" : ""}">${u}s</button>`).join("")}</div></div></div>
-    <div class="field"><label>Last done</label><input type="date" id="rld" value="${r?.last_done || ""}" max="${today()}"><div class="tiny muted" style="margin-top:4px">Leave empty to start fresh from today.</div></div>
+    <div class="field"><label>Last done</label><input type="date" id="rld" value="${r?.last_done || ""}" max="${today()}"></div>
     ${logs.length ? `<div class="lbl">History</div><div class="list">${logs.map(l => `<div class="item"><div class="grow">${fmtShort(l.date)}</div><span class="pill ${l.kind === "skip" ? "" : "sage"}">${l.kind === "skip" ? "Skipped" : "Done"}</span></div>`).join("")}</div>` : ""}
     <div class="err" id="rerr"></div>
     <button class="btn primary block" id="usave" style="margin-top:12px">Save</button>

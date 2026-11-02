@@ -22,7 +22,9 @@ const P = () => periodOf(S.moneyFrom || today());
 const inP = (p, d) => d >= p.from && (!p.to || d <= p.to);
 const periodTx = p => S.tx.filter(t => inP(p, t.date));
 const fmtP = p => `${fmtShort(p.from).replace(/^\w+ /, "")} – ${p.to ? fmtShort(p.to).replace(/^\w+ /, "") : "next pay day"}`;
-window.MD.periodOf = periodOf; window.MD.fmtPeriod = p => fmtP(p);
+window.MD.periodOf = periodOf;
+window.MD.SPEND_GROUPS = { fixed: ["Fixed", "#8E92E0"], commitment: ["Commitments", "#2B3060"], subscription: ["Subscriptions", "#E8A0A0"], everyday: ["Everyday", "#9CBBA4"], lifestyle: ["Lifestyle", "#F2C94C"] };
+window.MD.payLeft = p => payMath(p); window.MD.fmtPeriod = p => fmtP(p);
 S.moneyFrom = S.moneyFrom || null;
 S.moneyView = S.moneyView || "overview";
 S.histFilter = S.histFilter || "all";
@@ -156,7 +158,6 @@ function payCard(p) {
     ${income + carry ? `<div class="bar" style="background:#3E4480;margin-top:10px"><i class="ringless" style="width:${used * 100}%;background:${after < 0 ? "#F3B7B7" : "#F6D86B"}"></i></div>` : ""}
     <div class="pc-rows">
       ${carry ? row("Left from last pay", carry, "+") : ""}${row("Spent from bank", bankSpent)}${row("Saved", saved)}${cardPaid ? row("Card paid", cardPaid) : ""}
-      ${cardSpent ? `<div class="pc-note">Card spending ${rm(cardSpent)}</div>` : ""}
       ${cur ? `<div class="pc-line"></div>
       <button class="pc-row pc-btn" id="mstill"><span>Bills still to pay${todo.length ? ` · ${todo.length}` : ""} ${I.right.replace("<svg", '<svg width="12" height="12"')}</span><b>− ${rm(still)}</b></button>
       ${row("Credit card", owed)}
@@ -274,8 +275,7 @@ function sharedBlock(x) {
   return `<div class="pot">
     <div class="between small"><span><b>Collected ${got} of ${need}</b> · ${rm(gotAmt)} of ${rm(share * need)}</span>${x.paid ? '<span class="pill sage">Rent paid</span>' : got === need ? '<span class="pill sage">All in</span>' : ""}</div>
     <div class="bar" style="margin:6px 0 8px"><i style="width:${need ? got / need * 100 : 0}%;background:var(--sage)"></i></div>
-    <div class="people">${x.coll.map(c => `<button class="person ${c.tx ? "in" : ""}" data-collect="${b.id}|${esc(c.name)}"><span class="pdot">${c.tx ? "✓" : esc(c.name.slice(0, 1).toUpperCase())}</span>${esc(c.name)}${c.tx ? `<span class="tiny" style="opacity:.75"> · ${esc(acc(c.tx.account_id)?.name || "")}</span>` : ""}</button>`).join("")}</div>
-    <div class="tiny muted" style="margin-top:6px">Your share ${rm(share)} counts as spending. The others' money just passes through your account.</div></div>`;
+    <div class="people">${x.coll.map(c => `<button class="person ${c.tx ? "in" : ""}" data-collect="${b.id}|${esc(c.name)}"><span class="pdot">${c.tx ? "✓" : esc(c.name.slice(0, 1).toUpperCase())}</span>${esc(c.name)}${c.tx ? `<span class="tiny" style="opacity:.75"> · ${esc(acc(c.tx.account_id)?.name || "")}</span>` : ""}</button>`).join("")}</div></div>`;
 }
 function viewBills() {
   const list = billsInPeriod(P()), others = S.bills.filter(b => !list.some(x => x.b.id === b.id));
@@ -286,8 +286,7 @@ function viewBills() {
       <div class="tiny muted">${x.paid ? `${x.b.auto_pay ? "charged" : "paid"} ${rm(Number(x.paid.amount) + Number(x.pass?.amount || 0))} on ${fmtShort(x.paid.date)}` : `${x.b.amount ? rm(x.b.amount) : "Amount varies"} · ${x.b.auto_pay ? "charged to " + esc(acc(x.b.account_id)?.name || "card") : x.b.due_on_payday ? "due on pay day" : "due"} ${fmtShort(x.due)}`}${instNo(x.b, x.m) ? ` · ${instNo(x.b, x.m)} of ${x.b.installments_total}` : ""}</div></button>
       ${x.paid ? billPill(x) : x.b.auto_pay ? `<span class="pill">Auto</span>` : `<button class="btn" style="height:34px" data-paybill="${x.b.id}">Paid</button>`}</div>
       ${(x.b.people || []).length ? sharedBlock(x) : ""}</div>`).join("") : '<div class="empty">No bills yet. Add the ones you pay every month, like your phone plan or rent.</div>'}
-    ${others.length ? `<div class="lbl">Not due this pay period</div><div class="list">${others.map(b => `<button class="item" style="width:100%;text-align:left" data-bill="${b.id}"><div class="grow"><div class="title">${esc(b.name)}</div><div class="tiny muted">${b.frequency === "yearly" ? `${MONL[(b.due_month || 1) - 1]} ${b.due_day}` : b.due_on_payday ? "on pay day" : `every month, day ${b.due_day}`}${b.amount ? " · " + rm(b.amount) : ""}</div></div></button>`).join("")}</div>` : ""}
-    <p class="tiny faint" style="text-align:center;margin-top:14px">Tapping Paid saves the bill as spending. "Auto" ones are added by themselves on their date and go onto your card.</p>`;
+    ${others.length ? `<div class="lbl">Not due this pay period</div><div class="list">${others.map(b => `<button class="item" style="width:100%;text-align:left" data-bill="${b.id}"><div class="grow"><div class="title">${esc(b.name)}</div><div class="tiny muted">${b.frequency === "yearly" ? `${MONL[(b.due_month || 1) - 1]} ${b.due_day}` : b.due_on_payday ? "on pay day" : `every month, day ${b.due_day}`}${b.amount ? " · " + rm(b.amount) : ""}</div></div></button>`).join("")}</div>` : ""}`;
 }
 async function toggleCollect(billId, name) {
   const b = S.bills.find(x => x.id === billId), m = billMonth(b);
@@ -412,7 +411,7 @@ function savAccSheet(a) {
   const ins = (S.savingTx || []).filter(t => t.to_account_id === a.id).sort((x, y) => y.date.localeCompare(x.date)).slice(0, 8);
   openSheet(`<div class="row" style="gap:12px">${window.ART.jar(52)}<div><h2 class="h2">${esc(a.name)}</h2><div class="small muted">${rm(savingsBalance(a))} saved</div></div></div>
     <div class="field" style="margin-top:14px"><label>Balance before you started using My Day (RM)</label><input type="number" inputmode="decimal" id="sob" value="${Number(a.opening_balance || 0) || ""}" placeholder="0.00"></div>
-    <p class="tiny muted" style="margin:-4px 2px 10px">Everything you save into ${esc(a.name)} in the app is added on top of this.</p>
+    
     <button class="btn primary block" id="sobs">Save</button>
     <button class="btn block" id="sadd" style="margin-top:8px">+ Save money into ${esc(a.name)}</button>
     ${ins.length ? `<div class="lbl">Recent</div><div class="list">${ins.map(t => `<div class="item"><div class="grow small">${fmtShort(t.date)}</div><span class="small">${rm(t.amount)}</span></div>`).join("")}</div>` : ""}`, () => {
@@ -515,11 +514,10 @@ function budgetSheet() {
   });
 }
 function setupSheet() {
-  const row = c => `<div class="item"><span style="width:10px;height:10px;border-radius:50%;flex:none;background:${CCOL[c.color]}"></span><div class="grow"><input type="text" value="${esc(c.name)}" data-rn="${c.id}" style="height:34px"></div>
+  const row = c => `<div class="item"><span style="width:10px;height:10px;border-radius:50%;flex:none;background:${CCOL[c.color]}"></span><div class="grow"><input type="text" value="${esc(c.name)}" data-rn="${c.id}" style="height:34px">${c.kind === "expense" ? `<select data-cg="${c.id}" style="height:30px;line-height:30px;margin-top:6px;font-size:11.5px">${Object.entries(window.MD.SPEND_GROUPS).map(([k, [l]]) => `<option value="${k}" ${(c.spend_group || "lifestyle") === k ? "selected" : ""}>Group: ${l}</option>`).join("")}</select>` : ""}</div>
      <select data-cc="${c.id}" style="width:96px;height:34px;line-height:34px">${Object.keys(CCOL).map(k => `<option ${c.color === k ? "selected" : ""}>${k}</option>`).join("")}</select>
      <button class="x" data-rd="${c.id}" aria-label="Remove">×</button></div>`;
   openSheet(`<div class="row" style="margin-bottom:4px">${window.ART.jar(44)}<h2 class="h2">Money settings</h2></div>
-    <p class="small muted" style="margin:0 2px">Rename, recolour, add or remove the categories you pick when adding money.</p>
     <div class="lbl">Spending</div><div class="list">${expCats().map(row).join("")}</div>
     <button class="addline" id="addc">+ Add spending category</button>
     <div class="lbl">Income</div><div class="list">${incCats().map(row).join("")}</div>
@@ -528,7 +526,6 @@ function setupSheet() {
     <div class="field"><label>Start asking "Has your salary come in?" from day</label><input type="number" min="1" max="31" id="sfd" value="${S.settings.salary_from_day || 20}"></div>
     <button class="btn block" id="sfdsave">Save</button>
     <div class="lbl">Pay dates</div>
-    <p class="tiny muted" style="margin:0 2px 8px">The salary question shows on these days. Months without a date use the day above.</p>
     <div class="list">${(S.payDates || []).filter(p => p.date >= today().slice(0, 4) + "-01-01").map(p => `<div class="item"><div class="grow small">${fmtShort(p.date)} ${p.date.slice(0, 4)}</div><button class="x" data-pdx="${p.id}" aria-label="Remove">×</button></div>`).join("") || '<div class="item small muted">No pay dates yet</div>'}</div>
     <input type="date" id="pdnew" style="margin-top:8px"><button class="btn block" id="pdadd" style="margin-top:8px">+ Add pay date</button>`, sh => {
     sh.querySelectorAll("[data-pdx]").forEach(b => b.onclick = async () => { try { await db.remove("myday_pay_dates", b.dataset.pdx); S.payDates = S.payDates.filter(x => x.id !== b.dataset.pdx); setupSheet(); render(); } catch (e) { fail(e); } });
@@ -538,11 +535,12 @@ function setupSheet() {
     sh.querySelectorAll("[data-rn]").forEach(inp => inp.onchange = async () => { const id = inp.dataset.rn, v = inp.value.trim(); if (!v) return;
       try { Object.assign(cat(id), await db.update("myday_categories", id, { name: v })); toast("Renamed"); } catch (e) { fail(e); } });
     sh.querySelectorAll("[data-cc]").forEach(x => x.onchange = async () => { try { Object.assign(cat(x.dataset.cc), await db.update("myday_categories", x.dataset.cc, { color: x.value })); setupSheet(); } catch (e) { fail(e); } });
+    sh.querySelectorAll("[data-cg]").forEach(x => x.onchange = async () => { try { Object.assign(cat(x.dataset.cg), await db.update("myday_categories", x.dataset.cg, { spend_group: x.value })); toast("Group changed"); } catch (e) { fail(e); } });
     sh.querySelectorAll("[data-rd]").forEach(b => b.onclick = async () => { const id = b.dataset.rd;
       try { await db.remove("myday_categories", id); S.categories = S.categories.filter(x => x.id !== id); setupSheet();
         toast("Removed", async () => { S.categories.push(await db.restore("myday_categories", id)); setupSheet(); }); } catch (e) { fail(e); } });
     const add = async o => { try { S.categories.push(await db.insert("myday_categories", o)); setupSheet(); } catch (e) { fail(e); } };
-    $("#addc").onclick = () => add({ name: "New category", kind: "expense", sort: 50 });
+    $("#addc").onclick = () => add({ name: "New category", kind: "expense", sort: 50, spend_group: "lifestyle" });
     $("#addi").onclick = () => add({ name: "New income", kind: "income", sort: 50 });
   });
 }

@@ -598,3 +598,14 @@ body{background:transparent!important}
 .item .title{font-size:12.5px;font-weight:500}
 .item .tiny{font-size:10px}
 .item>span[style*="font-weight:600"]{font-size:12.5px}
+
+/* ---------- v27: important plans, more in one hour, recap groups ---------- */
+.pstar{color:#E5B93A;margin-right:4px;font-size:11px}
+.slot.more{flex:none;height:26px;min-height:26px;margin-top:0}
+.slot.more span{font-size:14px}
+.startog{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:10px 12px;margin:2px 0 14px;border-radius:14px;border:1.5px solid var(--line);background:var(--card);font-size:12.5px;line-height:1.3}
+.startog .st{font-size:22px;color:var(--ink3);width:26px;text-align:center;transition:transform .25s}
+.startog.on{border-color:#F2C94C;background:var(--sunbg)}.startog.on .st{color:#E5B93A;transform:scale(1.15)}
+.grp summary{display:flex;align-items:center;gap:8px;padding:7px 0;list-style:none;cursor:pointer;border-top:1px dashed var(--line)}
+.grp:first-of-type summary{border-top:none}.grp summary::-webkit-details-marker{display:none}
+.grp summary .grow{flex:1}

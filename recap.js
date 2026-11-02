@@ -15,41 +15,39 @@ const inRange = (p, d) => d >= p.from && d <= p.to;
 function stats(p) {
   const tx = (S.tx || []).filter(t => inRange(p, t.date));
   const exp = tx.filter(t => t.type === "expense");
-  const byCat = {};
-  exp.forEach(t => { const k = t.category_id || "none"; byCat[k] = (byCat[k] || 0) + Number(t.amount); });
-  const top = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => [(S.categories || []).find(c => c.id === k)?.name || "No category", v]);
-  const kinds = { work: 0, oncall: 0, leave: 0, holiday: 0, off: 0 };
-  for (let d = p.from; d <= p.to; d = addDays(d, 1)) kinds[window.MD.dayInfo(d).kind]++;
-  const doneIn = x => x && inRange(p, ymd(new Date(x)));
-  const topics = (S.topics || []).filter(t => doneIn(t.done_at));
+  const cat = id => (S.categories || []).find(c => c.id === id);
+  const byCat = {}, byGroup = {};
+  exp.forEach(t => { const k = t.category_id || "none", g = cat(t.category_id)?.spend_group || "lifestyle";
+    byCat[k] = (byCat[k] || 0) + Number(t.amount); byGroup[g] = (byGroup[g] || 0) + Number(t.amount); });
+  const top = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => [cat(k)?.name || "No category", v]);
+  const pm = window.MD.payLeft ? window.MD.payLeft(p) : null;
   return {
     income: sum(tx.filter(t => t.type === "income")), spent: sum(exp), saved: sum(tx.filter(t => t.type === "saving")),
-    top, bills: exp.filter(t => t.bill_id).length, billsAmt: sum(exp.filter(t => t.bill_id)), kinds,
-    plans: (S.plans || []).filter(x => inRange(p, x.date)).length,
-    todos: (S.todos || []).filter(t => doneIn(t.done_at)).length,
-    topics
+    top, byGroup, bills: exp.filter(t => t.bill_id).length, billsAmt: sum(exp.filter(t => t.bill_id)), left: pm ? pm.left : null
   };
 }
 function recapSheet(from) {
   const p = from ? per(from) : lastPeriod();
   if (!p.to) p.to = today();
   const s = stats(p), pp = prevPeriod(p), ps = stats(pp), last = lastPeriod();
-  const diff = s.spent - ps.spent, hasPrev = ps.spent > 0;
-  const tile = (n, l) => `<div class="stat" style="text-align:left"><b>${n}</b><span class="tiny muted">${l}</span></div>`;
-  openSheet(`<div class="between"><div><div class="lbl" style="margin:0">PAY PERIOD RECAP</div><h2 class="h1" style="font-size:21px">${esc(window.MD.fmtPeriod(p))}</h2></div>
+  const diff = s.spent - ps.spent, hasPrev = ps.spent > 0, G = window.MD.SPEND_GROUPS || {};
+  const groups = Object.entries(G).map(([k, [l, c]]) => ({ k, l, c, v: s.byGroup[k] || 0 })).filter(x => x.v > 0);
+  const gtot = groups.reduce((a, x) => a + x.v, 0) || 1;
+  const catsIn = k => (S.categories || []).filter(c => c.kind === "expense" && (c.spend_group || "lifestyle") === k).map(c => c.name).join(", ");
+  openSheet(`<div class="between"><div><div class="lbl" style="margin:0">MONEY RECAP</div><h2 class="h1" style="font-size:21px">${esc(window.MD.fmtPeriod(p))}</h2></div>
       <div class="row"><button class="iconbtn" data-rm="${pp.from}" aria-label="Previous pay period">${I.left}</button>${p.from < last.from ? `<button class="iconbtn" data-rm="${addDays(p.to, 1)}" aria-label="Next pay period">${I.right}</button>` : ""}</div></div>
     <div class="card leave" style="margin-top:14px">
       <div class="between" style="font-size:10.5px"><div><div class="muted">Income</div><div style="font-size:14px;font-weight:600;color:#BFE3C9">${rm(s.income)}</div></div>
       <div><div class="muted">Spent</div><div style="font-size:14px;font-weight:600;color:#F3B7B7">${rm(s.spent)}</div></div>
       <div><div class="muted">Saved</div><div style="font-size:14px;font-weight:600;color:#F6D86B">${rm(s.saved)}</div></div></div>
+      ${s.left !== null && s.income ? `<div class="pc-after" style="margin-top:12px"><span>Left at the end</span><b>${s.left < 0 ? "−" : ""}${rm(Math.abs(s.left))}</b></div>` : ""}
       ${hasPrev ? `<div class="small muted" style="margin-top:10px">${diff <= 0 ? `You spent ${rm(-diff)} less than the pay period before.` : `You spent ${rm(diff)} more than the pay period before.`}</div>` : ""}</div>
-    ${s.top.length ? `<div class="lbl">Where it went</div><div class="list">${s.top.map(([n, v], i) => `<div class="item"><div class="grow">${i + 1}. ${esc(n)}</div><span class="small">${rm(v)}</span></div>`).join("")}</div>` : ""}
-    ${s.bills ? `<p class="small muted" style="margin:8px 2px">${s.bills} bill${s.bills > 1 ? "s" : ""} paid, ${rm(s.billsAmt)} in total.</p>` : ""}
-    <div class="lbl">Your days</div>
-    <div class="stats" style="margin-top:0">${tile(s.kinds.work, "work days")}${tile(s.kinds.oncall, "on-calls")}${tile(s.kinds.leave, "leave days")}</div>
-    <div class="stats" style="margin-top:0">${tile(s.plans, "plans")}${tile(s.todos, "to-dos done")}${tile(s.topics.length, "topics bloomed")}</div>
-    ${s.topics.length ? `<div class="lbl">What you learned</div><div class="list">${s.topics.map(t => `<div class="item"><div class="grow">${esc(t.title)}</div></div>`).join("")}</div>` : ""}
-    ${(S.goals || []).filter(g => !g.done_at).length ? `<div class="lbl">Goals</div><div class="list">${S.goals.filter(g => !g.done_at).map(g => { const sv = window.MD.goalSaved(g); return `<div class="item"><div class="grow">${esc(g.name)}</div><span class="small">${Math.floor(Math.min(100, sv / g.target * 100))}%</span></div>`; }).join("")}</div>` : ""}
+    ${groups.length ? `<div class="lbl">Spending by type</div><div class="card">
+      <div class="segbar" style="margin:2px 0 10px">${groups.map(x => `<i style="width:${x.v / gtot * 100}%;background:${x.c}"></i>`).join("")}</div>
+      ${groups.map(x => `<details class="grp"><summary><span class="accdot" style="background:${x.c}"></span><span class="grow small">${esc(x.l)}</span><span class="tiny muted">${Math.round(x.v / gtot * 100)}%</span><b class="small">${rm(x.v)}</b></summary><div class="tiny muted" style="padding:2px 0 6px 16px">${esc(catsIn(x.k) || "—")}</div></details>`).join("")}</div>` : ""}
+    ${s.top.length ? `<div class="lbl">Where it went</div><div class="list">${s.top.map(([n, v], i) => `<div class="item"><div class="grow">${i + 1}. ${esc(n)}</div><span>${rm(v)}</span></div>`).join("")}</div>` : ""}
+    ${s.bills ? `<div class="lbl">Bills</div><div class="list"><div class="item"><div class="grow">${s.bills} bill${s.bills > 1 ? "s" : ""} paid</div><span>${rm(s.billsAmt)}</span></div></div>` : ""}
+    ${(S.goals || []).filter(g => !g.done_at).length ? `<div class="lbl">Savings jars</div><div class="list">${S.goals.filter(g => !g.done_at).map(g => { const sv = window.MD.goalSaved(g); return `<div class="item"><div class="grow">${esc(g.name)}</div><span>${rm(sv)} · ${Math.floor(Math.min(100, sv / g.target * 100))}%</span></div>`; }).join("")}</div>` : ""}
     <p class="serif muted" style="text-align:center;margin:18px 0 4px">little by little, it adds up</p>`, sh => {
     sh.querySelectorAll("[data-rm]").forEach(b => b.onclick = async () => { const nf = b.dataset.rm; if (window.MD.ensureMonth) await window.MD.ensureMonth(per(nf).from.slice(0, 7)).catch(() => {}); recapSheet(nf); });
   });
