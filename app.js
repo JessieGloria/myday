@@ -317,7 +317,7 @@ function viewToday() {
     <button class="spentpill" data-go="money">${I.coin}<b>RM ${(window.MD.moneyToday ? window.MD.moneyToday() : 0).toFixed(2)}</b> spent today</button></div>
     <div class="row">${window.ART.sunPlant(70)}
     <button class="iconbtn" id="gear" aria-label="Settings">${I.gear}</button></div></div>
-  ${dayArc()}${post}
+  ${dayArc()}${yearLine()}${post}
   ${dueSoon()}
   <div class="seg">${[["plan", "Plan", 0, ""], ["todo", "To do", todoLeft, "sun"], ["buy", "To buy", buyLeft, "lav"], ["routines", "Routines", rDue, "rose"]].map(([k, l, n, c]) => `<button data-tv="${k}" class="${S.todayView === k ? "on" : ""}">${l}${n ? `<span class="badge ${c}">${n > 99 ? "99+" : n}</span>` : ""}</button>`).join("")}</div>
   <div id="tv">${({ plan: viewPlan, todo: viewTodo, buy: viewBuy, routines: window.MD.viewRoutines || (() => "") }[S.todayView] || viewPlan)()}</div>`;
@@ -348,6 +348,25 @@ function dayArc() {
       ${plans.map(p => `<span class="dl-dot ${toMin(p.start_time) <= mins ? "past" : ""}" style="left:${fr(toMin(p.start_time)) * 100}%"></span>`).join("")}
       <span class="dl-icon ${asleep ? "sleep" : ""}" style="left:${(before ? 0 : f) * 100}%">${moon ? moonSvg(asleep) : SUN_SVG}${asleep ? '<span class="zz"><i>z</i><i>z</i><i>z</i></span>' : ""}</span></div>
     <div class="between tiny faint" style="margin-top:4px"><span>6am</span>${next ? `<span class="dl-next">Next · <b>${t12(hhmm(next.start_time))}</b> ${esc(next.title)}</span>` : ""}<span>11pm</span></div>
+  </div>`;
+}
+/* the year as a line from 1 Jan to 31 Dec, with a sprout that grows into a flower */
+function yearLine() {
+  const t = today(), y = Number(t.slice(0, 4)), start = new Date(y, 0, 1), end = new Date(y + 1, 0, 1), now = parse(t);
+  const total = Math.round((end - start) / 864e5), done = Math.round((now - start) / 864e5) + 1, f = done / total, left = total - done;
+  const st = f < .2 ? 0 : f < .45 ? 1 : f < .7 ? 2 : f < .9 ? 3 : 4;
+  const sprout = `<svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><g class="yl-plant">
+    ${st === 0 ? `<ellipse cx="16" cy="26" rx="3.2" ry="2.4" fill="#B08968"/><path d="M16 24 q1 -3 3 -3.5" stroke="#7FA38A" stroke-width="1.5" fill="none" stroke-linecap="round"/>`
+      : `<path d="M16 28 V${st === 1 ? 19 : st === 2 ? 14 : 10}" stroke="#6E937A" stroke-width="1.8" stroke-linecap="round"/>
+         <path d="M16 22 C11 22 9 18 9 16 C13 16 15.5 18.5 16 22Z" fill="#9CBBA4"/><path d="M16 22 C21 22 23 18 23 16 C19 16 16.5 18.5 16 22Z" fill="#7FA38A"/>
+         ${st >= 2 ? `<path d="M16 17 C12 17 10.5 14 10.5 12.5 C13.5 12.5 15.5 14.5 16 17Z" fill="#7FA38A"/><path d="M16 17 C20 17 21.5 14 21.5 12.5 C18.5 12.5 16.5 14.5 16 17Z" fill="#9CBBA4"/>` : ""}
+         ${st === 3 ? `<path d="M16 11 C13.5 9 14 5 16 4 C18 5 18.5 9 16 11Z" fill="#F4A7B9"/>` : ""}
+         ${st === 4 ? [0, 72, 144, 216, 288].map(a => `<ellipse cx="16" cy="3.6" rx="2.6" ry="3.4" fill="#F4A7B9" transform="rotate(${a} 16 7.5)"/>`).join("") + `<circle cx="16" cy="7.5" r="2.4" fill="#F6D86B"/>` : ""}`}
+    </g></svg>`;
+  return `<div class="card dayline yearline">
+    <div class="dl-head small"><b>${Math.floor(f * 100)}%</b> <span class="muted">of ${y} · ${left} day${left === 1 ? "" : "s"} left</span></div>
+    <div class="dl-track"><i class="dl-fill yl-fill" style="width:${f * 100}%"></i><span class="dl-icon yl-icon" style="left:${f * 100}%">${sprout}</span></div>
+    <div class="between tiny faint" style="margin-top:4px"><span>Jan</span><span>Dec</span></div>
   </div>`;
 }
 // keep the sun moving while the app is open
@@ -762,7 +781,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 30 (alternating pastels)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 31 (year line, one topic at a time, flowers)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);
