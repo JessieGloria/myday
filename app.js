@@ -467,7 +467,7 @@ function viewPlan() {
     const here = timed.filter(p => hr(p.start_time) === h);
     const inBand = band && h >= band.from && h < band.to;
     const bandStart = band && h === band.from;
-    grid += `<div class="hr ${inBand ? band.cls : ""} ${bandStart ? "bstart" : ""}"><div class="hl">${t12(pad(h % 24) + ":00")}</div><div class="hc ${here.length ? "has" : ""}">
+    grid += `<div class="hr ${inBand ? band.cls : ""} ${bandStart ? "bstart" : ""}" data-h="${h}"><div class="hl">${t12(pad(h % 24) + ":00")}</div><div class="hc ${here.length ? "has" : ""}">
       ${bandStart ? `<button class="bandtag" data-auto="1">${esc(band.label)} · ${band.label === "Work" ? `${t12(hhmm(st.work_start))}–${t12(hhmm(st.work_end))}` : "8am → 8am"}</button>` : ""}
       ${here.map(blk).join("")}
       <button class="slot ${here.length ? "more" : ""}" data-slot="${pad(h % 24)}:00" aria-label="Add at ${t12(pad(h % 24) + ":00")}"><span>+</span></button></div></div>`;
@@ -476,10 +476,30 @@ function viewPlan() {
     <div class="between" style="margin:6px 2px 10px"><div class="h2">${esc(relDay(sel))}</div><span class="pill ${info.kind === "oncall" ? "navy" : info.kind === "leave" ? "sage" : info.kind === "work" ? "" : "warn"}">${esc(lab.title)}</span></div>
     ${info.prevOncall ? `<div class="tiny muted" style="margin:0 2px 8px">On-call from yesterday ends at 8am.</div>` : ""}
     ${anytime.length ? `<div class="lbl">Anytime</div><div class="anyt plain">${anytime.map(blk).join("")}</div>` : ""}
-    <div class="hours" id="hours">${grid}</div>`;
+    <div class="hours" id="hours">${grid}${sel === t ? `<div class="nowpast" id="nowpast"></div><div class="nowdot" id="nowdot"><span class="nowic"></span></div>` : ""}</div>`;
 }
+/* the little sun (or moon after 6pm) that marks "now" on today's planner; the part of the day already gone gets a warm wash */
+const NOW_SUN = `<svg viewBox="-12 -12 24 24" width="22" height="22" aria-hidden="true"><circle r="10" fill="#F6D86B" stroke="#F2C94C" stroke-width="1.2"/><circle cx="-3.2" cy="-1.2" r="1.1" fill="#5A4A3A"/><circle cx="3.2" cy="-1.2" r="1.1" fill="#5A4A3A"/><path d="M-2.4 2 q2.4 2 4.8 0" stroke="#5A4A3A" stroke-width="1.1" fill="none" stroke-linecap="round"/><circle cx="-5.8" cy="2" r="1.5" fill="#F4A7A7" opacity=".8"/><circle cx="5.8" cy="2" r="1.5" fill="#F4A7A7" opacity=".8"/></svg>`;
+const NOW_MOON = `<svg viewBox="-12 -12 24 24" width="22" height="22" aria-hidden="true"><path d="M3 -9 A10 10 0 1 0 9 5 A8 8 0 1 1 3 -9z" fill="#F6E7A8" stroke="#E5CF7A" stroke-width="1"/><circle cx="-4.5" cy="-.5" r="1" fill="#5A4A3A"/><circle cx="1" cy="-.5" r="1" fill="#5A4A3A"/><path d="M-3.2 2.6 q1.5 1.4 3 0" stroke="#5A4A3A" stroke-width="1" fill="none" stroke-linecap="round"/><circle cx="-6.5" cy="2.4" r="1.3" fill="#F4A7A7" opacity=".7"/></svg>`;
+function placeNow() {
+  const box = $("#hours"), dot = $("#nowdot"), past = $("#nowpast"); if (!box || !dot) return;
+  const now = new Date(), h = now.getHours(), m = now.getMinutes(), rows = [...box.querySelectorAll(".hr")];
+  const lastH = Number(rows[rows.length - 1]?.dataset.h);
+  const row = rows.find(r => Number(r.dataset.h) === h) || (h > lastH ? rows[rows.length - 1] : null);
+  if (!row) { dot.style.display = "none"; if (past) past.style.height = "0"; return; }
+  const y = row.offsetTop + (Number(row.dataset.h) === h ? row.offsetHeight * m / 60 : row.offsetHeight);
+  dot.style.display = ""; dot.style.top = `${y}px`;
+  if (past) { past.style.top = `${rows[0].offsetTop}px`; past.style.height = `${Math.max(0, y - rows[0].offsetTop)}px`; }
+  const ic = $(".nowic", dot), night = h >= 18; if (ic.dataset.n !== String(night)) { ic.innerHTML = night ? NOW_MOON : NOW_SUN; ic.dataset.n = String(night); }
+  dot.classList.toggle("night", night);
+}
+setInterval(() => { if (!document.hidden) placeNow(); }, 60000);
 function bindPlan() {
-  const strip = $("#strip"), on = $(".on", strip); if (on) strip.scrollLeft = on.offsetLeft - 60;
+  placeNow();
+  // keep the date strip where you left it; only line it up on today the first time
+  const strip = $("#strip"), on = $(".on", strip);
+  if (S.stripLeft != null) strip.scrollLeft = S.stripLeft; else if (on) strip.scrollLeft = on.offsetLeft - 60;
+  strip.addEventListener("scroll", () => { S.stripLeft = strip.scrollLeft; }, { passive: true });
   document.querySelectorAll("[data-pd]").forEach(b => b.onclick = () => { S.planDate = b.dataset.pd; render(); });
   document.querySelectorAll("[data-plan]").forEach(b => b.onclick = () => planSheet(S.plans.find(p => p.id === b.dataset.plan)));
   document.querySelectorAll("[data-auto]").forEach(b => b.onclick = () => daySheet(S.planDate));
@@ -780,7 +800,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 32 (plain planner, one subtopic at a time)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 35 (date strip stays put)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);

@@ -121,14 +121,13 @@ function topicCard(t, timer) {
   const st = stageOf(t), sb = subsOf(t), done = sb.filter(x => x.done_at).length;
   const mins = minsOf(t), last = S.sessions.find(x => x.topic_id === t.id);
   const sub = [STAGES[st][0], sb.length ? `${done} of ${sb.length} subtopics` : "", mins ? hm(mins) : "", last ? "last " + (last.date === today() ? "today" : fmtD(last.date)) : "", t.target_date ? "aim " + fmtD(t.target_date) : ""].filter(Boolean).join(" · ");
-  return `<div class="card topic" id="tc-${t.id}">
+  return `<div class="card topic" id="tc-${t.id}"><button class="topexp ${S.subOpen === t.id ? "up" : ""}" data-subtog="${t.id}" aria-label="${S.subOpen === t.id ? "Hide subtopics" : "Show subtopics"}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <button class="topic-main" data-topic="${t.id}"><div class="pot">${plant(st, colorOf(t), 62, false, t.flower)}</div>
       <div style="flex:1;min-width:0"><div class="h2" style="font-size:14px">${esc(t.title)}</div><div class="tiny muted">${sub}</div>
       ${sb.length ? `<div class="bar" style="margin-top:7px"><i style="width:${done / sb.length * 100}%;background:var(--sage)"></i></div>` : leaves(st)}</div></button>
     ${(() => { const cur = sb.find(x => !x.done_at), open = S.subOpen === t.id;
       const leaf = d => d ? '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 17 C3 8 9 3 17 3 C17 11 12 17 3 17Z" fill="#7FA38A"/><path d="M6 14 L14 6" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg>' : '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 17 C3 8 9 3 17 3 C17 11 12 17 3 17Z" fill="none" stroke="#C9CBF3" stroke-width="1.6"/></svg>';
       return `${cur && !open ? `<button class="subrow cur ${S.justTicked === t.id ? "enter" : ""}" data-sub="${cur.id}"><span class="leafchk">${leaf(false)}</span><span class="title">${esc(cur.title)}</span></button>` : ""}
-      <button class="subtoggle" data-subtog="${t.id}">${open ? "Hide subtopics" : sb.length ? "Show all subtopics" : "Add subtopics"} <span class="chev ${open ? "up" : ""}">${I.right.replace("<svg", '<svg width="14" height="14"')}</span></button>
       ${open ? `<div class="subs">${sb.map((x, i) => `<div class="subline"><button class="subrow ${x.done_at ? "done" : ""}" data-sub="${x.id}"><span class="leafchk">${leaf(!!x.done_at)}</span><span class="title">${esc(x.title)}</span></button>
           <button class="qmv" data-sup="${x.id}" ${i ? "" : "disabled"} aria-label="Move up">↑</button><button class="qmv" data-sdn="${x.id}" ${i < sb.length - 1 ? "" : "disabled"} aria-label="Move down">↓</button></div>`).join("")}
         <form class="subadd" data-subadd="${t.id}"><input type="text" placeholder="${sb.length ? "+ Add a subtopic" : "+ Add subtopics to grow this plant"}" autocomplete="off"><button class="btn" type="submit" aria-label="Add subtopic">Add</button></form></div>` : ""}`; })()}

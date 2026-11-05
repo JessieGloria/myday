@@ -672,3 +672,20 @@ body{background:transparent!important}
 @keyframes subin{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
 .subline{display:flex;align-items:center;gap:6px}
 .subline .subrow{flex:1;min-width:0}
+
+/* ---------- v33: "now" sun on the planner, expand arrow on topics ---------- */
+.card.topic{position:relative}
+.topexp{position:absolute;right:12px;top:12px;width:32px;height:32px;border-radius:10px;background:var(--lav);color:var(--peri);display:flex;align-items:center;justify-content:center;z-index:2;transition:transform .25s}
+.topexp.up{transform:rotate(180deg)}
+.card.topic .topic-main{padding-right:40px}
+
+/* ---------- v34: "now" sun on today's planner ---------- */
+.hours{position:relative}
+.nowpast{position:absolute;left:0;right:0;background:rgba(110,113,150,.10);pointer-events:none;z-index:1}
+@media (prefers-color-scheme: dark){.nowpast{background:rgba(0,0,0,.22)}}
+.nowdot{position:absolute;left:41px;width:22px;height:22px;margin-top:-11px;z-index:5;pointer-events:none;transition:top .8s ease;filter:drop-shadow(0 2px 4px rgba(242,201,76,.5))}
+.nowdot .nowic{display:block;width:22px;height:22px}
+.nowdot::after{content:"";position:absolute;inset:-5px;border-radius:50%;background:rgba(246,216,107,.35);animation:nowpulse 2.2s ease-out infinite;z-index:-1}
+.nowdot.night::after{background:rgba(142,146,224,.3)}
+@keyframes nowpulse{from{transform:scale(.6);opacity:1}to{transform:scale(1.6);opacity:0}}
+@media (prefers-reduced-motion: reduce){.nowdot::after{animation:none}}
