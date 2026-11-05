@@ -659,3 +659,16 @@ body{background:transparent!important}
 .qnum{width:22px;height:22px;border-radius:50%;background:var(--lav);color:var(--peri);font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
 .qmv{width:28px;height:28px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink2);font-size:13px;flex:none}
 .qmv:disabled{opacity:.3}
+
+/* ---------- v32: plain-text planner, one subtopic at a time ---------- */
+.ptxt{display:block;width:calc(100% - 44px);margin-left:8px;padding:6px 2px;text-align:left;font-size:10.5px;line-height:1.4;color:var(--ink);border-radius:8px;overflow-wrap:anywhere}
+.ptxt:active{background:var(--lav)}
+.ptxt .pnote{color:var(--ink2)}
+.hc{gap:0}
+.anyt.plain{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:4px 8px;margin-bottom:6px}
+.anyt.plain .ptxt{width:100%;margin-left:0}
+.subrow.cur{margin-top:10px;width:100%;background:var(--lav);border-radius:14px;padding:9px 12px}
+.subrow.cur.enter{animation:subin .45s cubic-bezier(.2,.8,.3,1)}
+@keyframes subin{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+.subline{display:flex;align-items:center;gap:6px}
+.subline .subrow{flex:1;min-width:0}

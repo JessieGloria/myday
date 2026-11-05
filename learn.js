@@ -29,7 +29,7 @@ window.MD.loaders.push(loadLearn);
 
 const colorOf = t => PETALS[[...t.id].reduce((s, c) => s + c.charCodeAt(0), 0) % PETALS.length];
 const minsOf = t => S.sessions.filter(x => x.topic_id === t.id).reduce((s, x) => s + x.minutes, 0) + (t.minutes || 0);
-const subsOf = t => S.subs.filter(x => x.topic_id === t.id);
+const subsOf = t => S.subs.filter(x => x.topic_id === t.id).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || (a.created_at || "").localeCompare(b.created_at || ""));
 function stageOf(t) {
   const sb = subsOf(t); if (!sb.length) return t.stage;
   const f = sb.filter(x => x.done_at).length / sb.length;
@@ -113,8 +113,7 @@ function viewLearn() {
       return `<div class="${on ? "on" : ""} ${isT ? "today" : ""}"><svg viewBox="0 0 20 24" width="20" height="24" aria-hidden="true"><path d="M10 2 C10 2 3 11 3 15.5 A7 7 0 0 0 17 15.5 C17 11 10 2 10 2Z" fill="${on ? "#9DC4F0" : "none"}" stroke="${on ? "#9DC4F0" : "#5A5F9A"}" stroke-width="1.6"/></svg><span>${l}</span></div>`; }).join("")}</div>
   </div>
   <form class="addbar" id="ladd" style="margin-top:14px"><input type="text" id="lin" placeholder="Plant a main topic" autocomplete="off"><button class="btn sun" type="submit">Plant</button></form>
-  ${growing.length ? `<div class="lbl">Now learning</div>${topicCard(growing[0], timer)}
-    ${growing.length > 1 ? `<button class="upnext" id="lqueue"><span class="tiny muted">Up next</span><span class="grow small">${esc(growing[1].title)}${growing.length > 2 ? ` <span class="muted">· +${growing.length - 2} more</span>` : ""}</span>${I.right.replace("<svg", '<svg width="16" height="16"')}</button>` : ""}`
+  ${growing.length ? `<div class="lbl">Growing</div>${growing.map(t => topicCard(t, timer)).join("")}`
     : `<div class="empty">${garden.length ? "Everything's in bloom. Plant a new topic to keep growing." : "Plant a topic you'd like to learn. Log your study time and watch it grow."}</div>`}
   ${garden.length ? `<div class="lbl">Your garden · ${garden.length} learned</div><div class="garden">${garden.map(t => `<button data-topic="${t.id}">${plant(4, colorOf(t), 54, true, t.flower)}<span>${esc(t.title)}</span></button>`).join("")}</div>` : ""}`;
 }
@@ -126,9 +125,13 @@ function topicCard(t, timer) {
     <button class="topic-main" data-topic="${t.id}"><div class="pot">${plant(st, colorOf(t), 62, false, t.flower)}</div>
       <div style="flex:1;min-width:0"><div class="h2" style="font-size:14px">${esc(t.title)}</div><div class="tiny muted">${sub}</div>
       ${sb.length ? `<div class="bar" style="margin-top:7px"><i style="width:${done / sb.length * 100}%;background:var(--sage)"></i></div>` : leaves(st)}</div></button>
-    <button class="subtoggle" data-subtog="${t.id}">${S.subOpen === t.id ? "Hide subtopics" : sb.length ? `Show subtopics · ${done} of ${sb.length}` : "Add subtopics"} <span class="chev ${S.subOpen === t.id ? "up" : ""}">${I.right.replace("<svg", '<svg width="14" height="14"')}</span></button>
-    <div class="subs ${S.subOpen === t.id ? "" : "folded"}">${sb.map(x => `<button class="subrow ${x.done_at ? "done" : ""}" data-sub="${x.id}"><span class="leafchk">${x.done_at ? '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 17 C3 8 9 3 17 3 C17 11 12 17 3 17Z" fill="#7FA38A"/><path d="M6 14 L14 6" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg>' : '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 17 C3 8 9 3 17 3 C17 11 12 17 3 17Z" fill="none" stroke="#C9CBF3" stroke-width="1.6"/></svg>'}</span><span class="title">${esc(x.title)}</span></button>`).join("")}
-      <form class="subadd" data-subadd="${t.id}"><input type="text" placeholder="${sb.length ? "+ Add a subtopic" : "+ Add subtopics to grow this plant"}" autocomplete="off"><button class="btn" type="submit" aria-label="Add subtopic">Add</button></form></div>
+    ${(() => { const cur = sb.find(x => !x.done_at), open = S.subOpen === t.id;
+      const leaf = d => d ? '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 17 C3 8 9 3 17 3 C17 11 12 17 3 17Z" fill="#7FA38A"/><path d="M6 14 L14 6" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg>' : '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 17 C3 8 9 3 17 3 C17 11 12 17 3 17Z" fill="none" stroke="#C9CBF3" stroke-width="1.6"/></svg>';
+      return `${cur && !open ? `<button class="subrow cur ${S.justTicked === t.id ? "enter" : ""}" data-sub="${cur.id}"><span class="leafchk">${leaf(false)}</span><span class="title">${esc(cur.title)}</span></button>` : ""}
+      <button class="subtoggle" data-subtog="${t.id}">${open ? "Hide subtopics" : sb.length ? "Show all subtopics" : "Add subtopics"} <span class="chev ${open ? "up" : ""}">${I.right.replace("<svg", '<svg width="14" height="14"')}</span></button>
+      ${open ? `<div class="subs">${sb.map((x, i) => `<div class="subline"><button class="subrow ${x.done_at ? "done" : ""}" data-sub="${x.id}"><span class="leafchk">${leaf(!!x.done_at)}</span><span class="title">${esc(x.title)}</span></button>
+          <button class="qmv" data-sup="${x.id}" ${i ? "" : "disabled"} aria-label="Move up">↑</button><button class="qmv" data-sdn="${x.id}" ${i < sb.length - 1 ? "" : "disabled"} aria-label="Move down">↓</button></div>`).join("")}
+        <form class="subadd" data-subadd="${t.id}"><input type="text" placeholder="${sb.length ? "+ Add a subtopic" : "+ Add subtopics to grow this plant"}" autocomplete="off"><button class="btn" type="submit" aria-label="Add subtopic">Add</button></form></div>` : ""}`; })()}
     <div class="topic-acts">
       <button class="btn" data-water="${t.id}">${drop()} Log study</button>
       ${timer && timer.id === t.id ? `<button class="btn" disabled style="opacity:.6">Timing…</button>` : `<button class="btn" data-lstart="${t.id}">${I.plan.replace("<svg", '<svg width="15" height="15"')} Timer</button>`}
@@ -265,9 +268,14 @@ function bindLearn() {
     if (!v) { window.ART.nudge($("#lin"), "Type a topic, then tap Plant"); return; }
     try { const first = !queue().length; const t = await db.insert("myday_topics", { title: v, stage: 0, queue_sort: nextSort() }); S.topics.push(t); $("#lin").value = "";
       if (first) { S.subOpen = t.id; window.ART.celebrate(`#tc-${t.id} .pot`); render(); setTimeout(() => document.querySelector(`[data-subadd="${t.id}"] input`)?.focus(), 80); }
-      else { render(); toast(`${t.title} added to your queue`); } } catch (er) { fail(er); } };
+      else { S.subOpen = t.id; render(); setTimeout(() => document.querySelector(`[data-subadd="${t.id}"] input`)?.focus(), 80); } } catch (er) { fail(er); } };
   document.querySelectorAll("[data-subtog]").forEach(b => b.onclick = () => { S.subOpen = S.subOpen === b.dataset.subtog ? null : b.dataset.subtog; render(); if (S.subOpen) setTimeout(() => document.querySelector(`[data-subadd="${S.subOpen}"] input`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 60); });
-  const lq = $("#lqueue"); if (lq) lq.onclick = queueSheet;
+  const mvSub = async (id, dir) => { const x = S.subs.find(k => k.id === id), t = S.topics.find(k => k.id === x.topic_id), o = subsOf(t), i = o.indexOf(x), j = i + dir;
+    if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j], o[i]];
+    try { for (const [k, y] of o.entries()) if (y.sort !== k) Object.assign(y, await db.update("myday_subtopics", y.id, { sort: k })); render(); } catch (e) { fail(e); } };
+  document.querySelectorAll("[data-sup]").forEach(b => b.onclick = () => mvSub(b.dataset.sup, -1));
+  document.querySelectorAll("[data-sdn]").forEach(b => b.onclick = () => mvSub(b.dataset.sdn, 1));
+  S.justTicked = null;
   document.querySelectorAll("[data-topic]").forEach(b => b.onclick = () => topicSheet(S.topics.find(x => x.id === b.dataset.topic)));
   document.querySelectorAll("[data-revise]").forEach(b => b.onclick = () => waterSheet(S.topics.find(x => x.id === b.dataset.revise), true));
   document.querySelectorAll("[data-water]").forEach(b => b.onclick = () => waterSheet(S.topics.find(x => x.id === b.dataset.water)));
@@ -284,7 +292,7 @@ function bindLearn() {
 }
 const nextSort = () => Math.max(0, ...S.topics.map(t => t.queue_sort || 0)) + 1;
 // after a topic blooms, the next one in the queue moves into the main card
-function bloomed(t) { render(); window.ART.confetti(null, 34); const nx = queue()[0]; toast(nx ? `${t.title} bloomed into a ${FLOWER_NAME[t.flower] ? FLOWER_NAME[t.flower].toLowerCase() : "flower"}! Next up: ${nx.title}` : `${t.title} is in full bloom`); }
+function bloomed(t) { render(); window.ART.confetti(null, 34); toast(`${t.title} bloomed into a ${FLOWER_NAME[t.flower] ? FLOWER_NAME[t.flower].toLowerCase() : "flower"}!`); }
 function queueSheet() {
   const q = queue();
   openSheet(`<h2 class="h2" style="margin-bottom:4px">Your topic queue</h2><p class="small muted" style="margin:0 2px 12px">The top one is what you're learning now.</p>
@@ -302,9 +310,10 @@ async function toggleSub(x) {
   const t = S.topics.find(k => k.id === x.topic_id);
   try {
     Object.assign(x, await db.update("myday_subtopics", x.id, { done_at: x.done_at ? null : nowIso() }));
+    if (x.done_at && S.subOpen !== t.id) S.justTicked = t.id;
     const diff = await syncStage(t);
     if (stageOf(t) === 4 && diff > 0) { if (S.subOpen === t.id) S.subOpen = null; bloomed(t); return; }
-    window.ART.celebrate(diff > 0 ? `#tc-${t.id} .pot` : `[data-sub="${x.id}"] .leafchk`, diff > 0 || !!x.done_at);
+    window.ART.celebrate(diff > 0 || (x.done_at && S.subOpen !== t.id) ? `#tc-${t.id} .pot` : `[data-sub="${x.id}"] .leafchk`, diff > 0 || !!x.done_at);
     render();
     if (diff > 0) toast(`${t.title} grew to ${STAGES[stageOf(t)][0].toLowerCase()}`);
   } catch (e) { fail(e); }

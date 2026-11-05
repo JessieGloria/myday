@@ -461,7 +461,7 @@ function viewPlan() {
   const hours = timed.map(p => hr(p.start_time));
   const first = Math.min(6, ...hours), last = Math.max(23, ...hours);
   const pc = planColors(sel);
-  const blk = p => `<button class="blk c-${pc[p.id]}" data-plan="${p.id}"><div class="bt">${p.important ? '<span class="pstar">★</span>' : ""}${esc(p.title)}</div>${p.note ? `<div class="bs">${esc(p.note)}</div>` : ""}</button>`;
+  const blk = p => `<button class="ptxt" data-plan="${p.id}">${p.important ? '<span class="pstar">★</span>' : ""}${esc(p.title)}${p.note ? `<span class="pnote"> · ${esc(p.note)}</span>` : ""}</button>`;
   let grid = "";
   for (let h = first; h <= last; h++) {
     const here = timed.filter(p => hr(p.start_time) === h);
@@ -475,7 +475,7 @@ function viewPlan() {
   return `<div class="strip" id="strip">${strip}</div>
     <div class="between" style="margin:6px 2px 10px"><div class="h2">${esc(relDay(sel))}</div><span class="pill ${info.kind === "oncall" ? "navy" : info.kind === "leave" ? "sage" : info.kind === "work" ? "" : "warn"}">${esc(lab.title)}</span></div>
     ${info.prevOncall ? `<div class="tiny muted" style="margin:0 2px 8px">On-call from yesterday ends at 8am.</div>` : ""}
-    ${anytime.length ? `<div class="lbl">Anytime</div><div class="anyt">${anytime.map(p => `<button class="blk c-${pc[p.id]}" data-plan="${p.id}"><div class="bt">${esc(p.title)}</div>${p.note ? `<div class="bs">${esc(p.note)}</div>` : ""}</button>`).join("")}</div>` : ""}
+    ${anytime.length ? `<div class="lbl">Anytime</div><div class="anyt plain">${anytime.map(blk).join("")}</div>` : ""}
     <div class="hours" id="hours">${grid}</div>`;
 }
 function bindPlan() {
@@ -527,7 +527,6 @@ function planSheet(p, date, at) {
     <div class="field"><label>End (optional)</label><input type="time" id="pe" value="${hhmm(p.end_time)}"></div></div>
     <div class="field"><label>Note</label><input type="text" id="pn" value="${esc(p.note || "")}" placeholder="Optional"></div>
     <button type="button" class="startog ${p.important ? "on" : ""}" id="pimp"><span class="st">${p.important ? "★" : "☆"}</span><span><b>Important</b><br><span class="tiny muted">Shows in Coming up on the calendar</span></span></button>
-    <div class="field"><label>Colour</label><div class="swatches">${COLORS.map(([k, c]) => `<button data-c="${k}" class="${k === color ? "on" : ""}" style="background:${c}" aria-label="${k}"></button>`).join("")}</div></div>
     <div class="err" id="perr"></div>
     <button class="btn primary block" id="psave">${isNew ? "Add" : "Save"}</button>
     ${isNew ? "" : '<button class="btn danger block" id="pdel" style="margin-top:8px">Delete</button>'}`, sh => {
@@ -781,7 +780,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 31 (year line, one topic at a time, flowers)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 32 (plain planner, one subtopic at a time)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);
