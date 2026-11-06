@@ -43,7 +43,8 @@ async function loadMoney() {
   const from = monthsBack(3), cards = acc.filter(a => a.kind === "card").map(a => a.id);
   const cardQ = cards.length ? `,account_id.in.(${cards}),to_account_id.in.(${cards})` : "";
   S.payDates = await db.list("myday_pay_dates", "order=date");
-  S.tx = await db.list("myday_transactions", `or=(date.gte.${from},needs_review.is.true${cardQ})&order=date.desc,time.desc.nullslast,created_at.desc`);
+  S.tx = await db.list("myday_transactions", `or=(date.gte.${from},needs_review.is.true,type.eq.payback${cardQ})&order=date.desc,time.desc.nullslast,created_at.desc`);
+  S.ious = await db.list("myday_ious", "order=created_at");
   S.txFrom = from.slice(0, 7);
   await autoCharge();
 }
@@ -74,11 +75,19 @@ window.MD.loaders.push(loadMoney);
 
 const cat = id => S.categories.find(c => c.id === id);
 const acc = id => S.accounts.find(a => a.id === id);
+/* paid for others: their share isn't your spending; it only comes back into your money once they pay you */
+const iousOf = id => (S.ious || []).filter(i => i.tx_id === id);
+const paidBack = i => sum(S.tx.filter(t => t.type === "payback" && t.iou_id === i.id));
+const owing = i => i.settled_at ? 0 : Math.max(0, Math.round((Number(i.amount) - Number(i.forgiven || 0) - paidBack(i)) * 100) / 100);
+const myAmt = t => t.type !== "expense" ? Number(t.amount) : Math.max(0, Number(t.amount) - iousOf(t.id).reduce((s, i) => s + Number(i.amount) - Number(i.forgiven || 0), 0));
+window.MD.myAmt = myAmt;
+const openIous = () => (S.ious || []).filter(i => owing(i) > 0.004).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+const knownPeople = () => [...new Set([...S.bills.flatMap(b => b.people || []), ...(S.ious || []).map(i => i.person)])];
 const expCats = () => S.categories.filter(c => c.kind === "expense");
 const incCats = () => S.categories.filter(c => c.kind === "income");
 function totals(p) {
   const t = periodTx(p);
-  return { income: sum(t.filter(x => x.type === "income")), spent: sum(t.filter(x => x.type === "expense")), saved: sum(t.filter(x => x.type === "saving")) };
+  return { income: sum(t.filter(x => x.type === "income")), spent: sum(t.filter(x => x.type === "expense"), myAmt), saved: sum(t.filter(x => x.type === "saving")) };
 }
 const savingsAccounts = () => S.accounts.filter(a => a.kind === "savings");
 const savingsBalance = a => Number(a.opening_balance || 0) + (S.savingTx || []).filter(t => t.to_account_id === a.id).reduce((s, t) => s + Number(t.amount), 0);
@@ -91,7 +100,7 @@ function accBalance(a) {
   let b = Number(a.opening_balance || 0);
   since.forEach(t => {
     const amt = Number(t.amount);
-    if ((t.type === "income" || t.type === "collect") && t.account_id === a.id) b += amt;
+    if ((t.type === "income" || t.type === "collect" || t.type === "payback") && t.account_id === a.id) b += amt;
     if (t.type === "passthrough" && t.account_id === a.id) b -= amt;
     if ((t.type === "expense" || t.type === "saving" || t.type === "card_payment") && t.account_id === a.id) b -= amt;
   });
@@ -136,15 +145,15 @@ function payMath(p, depth = 0) {
   const tx = periodTx(p), isCard = t => acc(t.account_id)?.kind === "card";
   const income = sum(tx.filter(t => t.type === "income")), bankSpent = sum(tx.filter(t => t.type === "expense" && !isCard(t)));
   const cardSpent = sum(tx.filter(t => t.type === "expense" && isCard(t))), saved = sum(tx.filter(t => t.type === "saving"));
-  const cardPaid = sum(tx.filter(t => t.type === "card_payment"));
+  const cardPaid = sum(tx.filter(t => t.type === "card_payment")), backIn = sum(tx.filter(t => t.type === "payback"));
   let carry = 0;
   if (depth < 6 && p.from > (S.txFrom || "") + "-01") { const pp = periodOf(addDays(p.from, -1)); if (periodTx(pp).some(t => t.type === "income")) carry = Math.max(0, payMath(pp, depth + 1).left); }
-  return { tx, income, bankSpent, cardSpent, saved, cardPaid, carry, left: income + carry - bankSpent - saved - cardPaid };
+  return { tx, income, bankSpent, cardSpent, saved, cardPaid, backIn, carry, left: income + carry + backIn - bankSpent - saved - cardPaid };
 }
 window.MD.lastPayLeft = () => { const p = curPeriod(); return payMath(p).carry; };
 // the main card: what's left from this salary, then after bills and the credit card
 function payCard(p) {
-  const { tx, income, bankSpent, cardSpent, saved, cardPaid, carry, left } = payMath(p), cur = p.from === curPeriod().from;
+  const { tx, income, bankSpent, cardSpent, saved, cardPaid, backIn, carry, left } = payMath(p), cur = p.from === curPeriod().from;
   const todo = cur ? billsInPeriod(p).filter(x => !x.paid) : [], still = sum(todo, myPart);
   const owed = cur ? cardOwed().reduce((s, x) => s + Math.max(0, x.owed), 0) : 0, after = left - still - owed;
   const used = income + carry ? Math.min(1, Math.max(0, (income + carry - Math.max(0, after)) / (income + carry))) : 0;
@@ -157,7 +166,7 @@ function payCard(p) {
       <div class="tiny" style="color:var(--navytext)">${income ? `of ${rm(income)} ${tx.some(t => t.type === "income" && /salary/i.test(t.payee || cat(t.category_id)?.name || "")) ? "salary" : "income"}` : "No salary recorded for this pay period yet"}</div></div>${window.ART.jar(54)}</div>
     ${income + carry ? `<div class="bar" style="background:#3E4480;margin-top:10px"><i class="ringless" style="width:${used * 100}%;background:${after < 0 ? "#F3B7B7" : "#F6D86B"}"></i></div>` : ""}
     <div class="pc-rows">
-      ${carry ? row("Left from last pay", carry, "+") : ""}${row("Spent from bank", bankSpent)}${row("Saved", saved)}${cardPaid ? row("Card paid", cardPaid) : ""}
+      ${carry ? row("Left from last pay", carry, "+") : ""}${backIn ? row("Paid back to you", backIn, "+") : ""}${row("Spent from bank", bankSpent)}${row("Saved", saved)}${cardPaid ? row("Card paid", cardPaid) : ""}
       ${cur ? `<div class="pc-line"></div>
       <button class="pc-row pc-btn" id="mstill"><span>Bills still to pay${todo.length ? ` · ${todo.length}` : ""} ${I.right.replace("<svg", '<svg width="12" height="12"')}</span><b>− ${rm(still)}</b></button>
       ${row("Credit card", owed)}
@@ -204,12 +213,18 @@ function billsInPeriod(p) {
 const myPart = x => (x.b.people || []).length ? Number(x.b.share_amount || 0) : Number(x.b.amount || 0);
 const billMonth = b => (S.tab === "money" ? billsInPeriod(P()).find(x => x.b.id === b.id)?.m : null) || curMonth();
 const billPill = x => x.status === "paid" ? `<span class="pill sage">Paid</span>` : x.status === "late" ? `<span class="pill rose">${-x.days} day${x.days === -1 ? "" : "s"} late</span>` : x.status === "soon" ? `<span class="pill warn">${x.days === 0 ? "Today" : x.days === 1 ? "Tomorrow" : `in ${x.days} days`}</span>` : `<span class="pill">${fmtShort(x.due)}</span>`;
-window.MD.moneyToday = () => sum(S.tx.filter(t => t.type === "expense" && t.date === today()));
+window.MD.moneyToday = () => sum(S.tx.filter(t => t.type === "expense" && t.date === today()), myAmt);
 window.MD.billsDueSoon = () => { const w = new Set(rentWaiting().map(r => r.x.b.id)); return billsFor(curMonth()).filter(x => (x.status === "late" || x.status === "soon") && !w.has(x.b.id)); };
 
 /* ---------- views ---------- */
 function txRow(t) {
   const c = cat(t.category_id), a = acc(t.account_id);
+  if (t.type === "payback") {
+    const i = (S.ious || []).find(k => k.id === t.iou_id);
+    return `<button class="item" style="width:100%;text-align:left" data-tx="${t.id}"><span style="width:10px;height:10px;border-radius:50%;flex:none;background:var(--sage)"></span>
+      <div class="grow"><div class="title">${esc(t.payee || "")} paid you back</div><div class="tiny muted">${esc(i?.title || "")}${i?.title ? " · " : ""}${esc(acc(t.account_id)?.name || "")}</div></div>
+      <span style="font-weight:600;color:var(--sageink)">+ ${rm(t.amount)}</span></button>`;
+  }
   if (t.type === "collect" || t.type === "passthrough") {
     const bl = S.bills.find(x => x.id === t.bill_id);
     return `<button class="item" style="width:100%;text-align:left" data-tx="${t.id}"><span style="width:10px;height:10px;border-radius:50%;flex:none;background:var(--lav2)"></span>
@@ -219,7 +234,8 @@ function txRow(t) {
   const sign = t.type === "income" ? "+" : t.type === "expense" ? "−" : "→";
   const col = t.type === "income" ? "color:var(--sageink)" : t.type === "saving" || t.type === "card_payment" ? "color:var(--sunink)" : "";
   const title = t.type === "card_payment" ? `Paid ${acc(t.to_account_id)?.name || "card"}` : t.type === "saving" ? ((S.goals || []).find(g => g.id === t.goal_id)?.name || t.note || "Savings") : (t.payee || c?.name || "Expense");
-  const sub = [t.type === "saving" ? "Saved" : c?.name, t.type === "saving" && t.to_account_id ? `${a?.name || ""} → ${acc(t.to_account_id)?.name || ""}` : a?.name, t.time ? t.time.slice(0, 5) : ""].filter(Boolean).join(" · ");
+  const others = iousOf(t.id);
+  const sub = [others.length ? `your share ${rm(myAmt(t))} · ${others.map(i => i.person).join(", ")}` : "", t.type === "saving" ? "Saved" : c?.name, t.type === "saving" && t.to_account_id ? `${a?.name || ""} → ${acc(t.to_account_id)?.name || ""}` : a?.name, t.time ? t.time.slice(0, 5) : ""].filter(Boolean).join(" · ");
   return `<button class="item" style="width:100%;text-align:left" data-tx="${t.id}">
     <span style="width:10px;height:10px;border-radius:50%;flex:none;background:${c ? CCOL[c.color] : "var(--lav2)"}"></span>
     <div class="grow"><div class="title">${esc(title)}${t.needs_review ? ' <span class="pill warn">check me</span>' : ""}</div><div class="tiny muted">${esc(sub)}</div></div>
@@ -242,15 +258,16 @@ function viewOverview() {
   const left = budget ? budget - tt.spent : spentOnly ? tt.spent : tt.income - tt.spent - tt.saved;
   const owed = cardOwed().filter(x => Math.abs(x.owed) > 0.004);
   const bills = billsInPeriod(p).filter(x => x.status !== "paid");
-  const cats = expCats().map(c => ({ c, spent: sum(periodTx(p).filter(t => t.type === "expense" && t.category_id === c.id)), budget: Number(c.budget || 0) }))
+  const cats = expCats().map(c => ({ c, spent: sum(periodTx(p).filter(t => t.type === "expense" && t.category_id === c.id), myAmt), budget: Number(c.budget || 0) }))
     .filter(x => x.spent || x.budget).sort((a, b) => b.spent - a.spent);
-  const unc = sum(periodTx(p).filter(t => t.type === "expense" && !t.category_id));
+  const unc = sum(periodTx(p).filter(t => t.type === "expense" && !t.category_id), myAmt);
   const bar = (spent, bud) => { const p = bud ? spent / bud : 0, col = !bud ? "var(--lav2)" : p > 1 ? "#D86A6A" : p > .8 ? "#E5B93A" : "var(--peri)";
     return `<div class="bar"><i style="width:${bud ? Math.min(100, p * 100) : 100}%;background:${col}"></i></div>`; };
   const recent = periodTx(p).slice(0, 6);
   return `
   ${review.length ? `<button class="card between" id="mreview" style="width:100%;text-align:left;background:var(--sunbg);border:none;margin-bottom:12px"><div><div class="h2" style="color:var(--sunink)">${review.length} to check</div><div class="small" style="color:var(--sunink)">Saved from your screenshots. Tap to confirm.</div></div><span style="color:var(--sunink)">${I.right.replace("<svg", '<svg width="20" height="20"')}</span></button>` : ""}
   ${payCard(p)}
+  ${owedCard()}
   ${totalCard()}
   <div class="mact">${[["expense", "Spent", I.coin, "var(--rosebg)"], ["income", "Income", I.plus, "var(--sagebg)"], ["saving", "Saved", I.target || I.plus, "var(--sunbg)"]].map(([k, l, ic, bg]) => `<button data-madd="${k}"><span class="qi" style="background:${bg}">${ic}</span>${l}</button>`).join("")}</div>
   ${owed.map(cardTile).join("")}
@@ -313,7 +330,8 @@ function bindMoney() {
   document.querySelectorAll("[data-mv]").forEach(b => b.onclick = () => { S.moneyView = b.dataset.mv; render(); window.scrollTo(0, 0); });
   document.querySelectorAll("[data-hf]").forEach(b => b.onclick = () => { S.histFilter = b.dataset.hf; render(); });
   document.querySelectorAll("[data-tx]").forEach(b => b.onclick = () => { const t = S.tx.find(x => x.id === b.dataset.tx);
-    if (t.type === "collect" || t.type === "passthrough") return passSheet(t); txSheet(t); });
+    if (t.type === "collect" || t.type === "passthrough") return passSheet(t); if (t.type === "payback") return paybackSheet(t); txSheet(t); });
+  document.querySelectorAll("[data-iougot]").forEach(b => b.onclick = () => gotSheet((S.ious || []).find(i => i.id === b.dataset.iougot)));
   document.querySelectorAll("[data-collect]").forEach(b => b.onclick = () => { const [id, ...n] = b.dataset.collect.split("|"); toggleCollect(id, n.join("|")); });
   document.querySelectorAll("[data-bill]").forEach(b => b.onclick = () => billSheet(S.bills.find(x => x.id === b.dataset.bill)));
   document.querySelectorAll("[data-paybill]").forEach(b => b.onclick = () => payBill(S.bills.find(x => x.id === b.dataset.paybill)));
@@ -334,6 +352,19 @@ function txSheet(t, preset = {}, opts = {}) {
   const isNew = !t;
   t = t || Object.assign({ type: "expense", amount: "", date: today(), time: null, category_id: null, account_id: S.settings.default_account_id, to_account_id: null, payee: "", note: "" }, preset);
   let st = { ...t };
+  const prevIous = t.id ? iousOf(t.id) : [];
+  const pfo = { on: prevIous.length > 0, people: prevIous.map(i => i.person), mode: prevIous.length ? "own" : "even", amounts: Object.fromEntries(prevIous.map(i => [i.person, Number(i.amount)])) };
+  const shares = () => { const amt = Number(st.amount) || 0, n = pfo.people.length; if (!n) return {};
+    if (pfo.mode === "all") return Object.fromEntries(pfo.people.map(p => [p, Math.round(amt / n * 100) / 100]));
+    if (pfo.mode === "even") return Object.fromEntries(pfo.people.map(p => [p, Math.round(amt / (n + 1) * 100) / 100]));
+    return Object.fromEntries(pfo.people.map(p => [p, Math.round((Number(pfo.amounts[p]) || 0) * 100) / 100])); };
+  const pfoHtml = () => { if (st.type !== "expense") return "";
+    const sh = shares(), theirs = Object.values(sh).reduce((a, b) => a + b, 0), mine = Math.max(0, (Number(st.amount) || 0) - theirs);
+    return `<button type="button" class="startog ${pfo.on ? "on" : ""}" id="xpfo"><span class="st">${pfo.on ? "✓" : "+"}</span><span><b>Paid for someone else</b><br><span class="tiny muted">Their share isn't your spending</span></span></button>
+    ${pfo.on ? `<div class="pfobox"><div class="field"><label>Who</label><div class="paint" style="margin:0">${[...new Set([...knownPeople(), ...pfo.people])].map(p => `<button type="button" data-pp="${esc(p)}" class="${pfo.people.includes(p) ? "on" : ""}">${esc(p)}</button>`).join("")}<button type="button" id="xpnew">+ Name</button></div></div>
+      ${pfo.people.length ? `<div class="field"><label>Their share</label><div class="paint" style="margin:0">${[["all", "All of it"], ["even", "Split evenly"], ["own", "Type amounts"]].map(([k, l]) => `<button type="button" data-pm="${k}" class="${pfo.mode === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
+      ${pfo.mode === "own" ? pfo.people.map(p => `<div class="row" style="gap:8px;margin-bottom:8px"><span class="small" style="width:90px">${esc(p)}</span><input type="number" inputmode="decimal" step="0.01" min="0" data-pa="${esc(p)}" value="${pfo.amounts[p] ?? ""}" placeholder="0.00"></div>`).join("") : ""}
+      <div class="small" id="pfosum" style="margin:2px 2px 10px">${pfo.people.map(p => `${esc(p)} ${rm(sh[p] || 0)}`).join(" · ")} · <b>your share ${rm(mine)}</b></div>` : ""}</div>` : ""}`; };
   if (isNew && st.type === "saving" && !st.to_account_id) { st.to_account_id = savingsAccounts()[0]?.id || null; if (["card", "savings"].includes(acc(st.account_id)?.kind)) st.account_id = S.accounts.find(a => a.kind === "bank")?.id; }
   const draw = () => {
     const isCardPay = st.type === "card_payment";
@@ -348,6 +379,7 @@ function txSheet(t, preset = {}, opts = {}) {
     ${st.type === "saving" && savingsAccounts().length ? `<div class="field"><label>Into</label>${chips(savingsAccounts().map(a => [a.id, a.name]), st.to_account_id, "xto")}</div>` : ""}
     ${isCardPay ? `<div class="field"><label>Card</label>${chips(S.accounts.filter(a => a.kind === "card").map(a => [a.id, a.name]), st.to_account_id, "xto")}</div>` : ""}
     ${st.type === "expense" || st.type === "income" ? `<div class="field"><label>${st.type === "income" ? "From" : "Where / who"}</label><input type="text" id="xp" value="${esc(st.payee || "")}" placeholder="${st.type === "income" ? "Salary" : "Kedai kopi"}"></div>` : ""}
+    ${pfoHtml()}
     <div class="two"><div class="field"><label>Date</label><input type="date" id="xd" value="${st.date}"></div><div class="field"><label>Time</label><input type="time" id="xt" value="${(st.time || "").slice(0, 5)}"></div></div>
     ${st.type === "saving" && (S.goals || []).some(g => !g.done_at) ? `<div class="field"><label>Towards goal</label>${chips(S.goals.filter(g => !g.done_at || g.id === st.goal_id).map(g => [g.id, g.name]), st.goal_id, "xg")}</div>` : ""}
     <div class="field"><label>Note</label><input type="text" id="xn" value="${esc(st.note || "")}" placeholder="Optional"></div>
@@ -363,6 +395,13 @@ function txSheet(t, preset = {}, opts = {}) {
       if (st.type === "saving") { if (["card", "savings"].includes(acc(st.account_id)?.kind)) st.account_id = S.accounts.find(a => a.kind === "bank")?.id; st.to_account_id = savingsAccounts()[0]?.id || null; }
       if (st.type === "card_payment") { if (acc(st.account_id)?.kind === "card") st.account_id = S.accounts.find(a => a.kind === "bank")?.id; st.to_account_id = st.to_account_id || S.accounts.find(a => a.kind === "card")?.id; }
       sh.innerHTML = '<div class="grab"></div>' + draw(); mount(sh); });
+    const redraw = () => { keep(); const y = sh.scrollTop; sh.innerHTML = '<div class="grab"></div>' + draw(); mount(sh); sh.scrollTop = y; };
+    const pt = $("#xpfo"); if (pt) pt.onclick = () => { pfo.on = !pfo.on; redraw(); };
+    sh.querySelectorAll("[data-pp]").forEach(b => b.onclick = () => { const p = b.dataset.pp; pfo.people = pfo.people.includes(p) ? pfo.people.filter(x => x !== p) : [...pfo.people, p]; redraw(); });
+    sh.querySelectorAll("[data-pm]").forEach(b => b.onclick = () => { pfo.mode = b.dataset.pm; redraw(); });
+    sh.querySelectorAll("[data-pa]").forEach(inp => inp.oninput = () => { pfo.amounts[inp.dataset.pa] = inp.value; const el = $("#pfosum"); if (el) { const s2 = shares(), th = Object.values(s2).reduce((a, b) => a + b, 0); el.innerHTML = `${pfo.people.map(p => `${esc(p)} ${rm(s2[p] || 0)}`).join(" · ")} · <b>your share ${rm(Math.max(0, (Number($("#xa").value) || 0) - th))}</b>`; } });
+    const pn = $("#xpnew"); if (pn) pn.onclick = () => { const v = (prompt("Name") || "").trim(); if (v) { if (!pfo.people.includes(v)) pfo.people.push(v); redraw(); } };
+    const xa = $("#xa"); if (xa && pfo.on) xa.addEventListener("change", () => redraw());
     sh.querySelectorAll("[data-xc]").forEach(b => b.onclick = () => { st.category_id = st.category_id === b.dataset.xc ? null : b.dataset.xc; sh.querySelectorAll("[data-xc]").forEach(x => x.classList.toggle("on", x.dataset.xc === st.category_id)); });
     sh.querySelectorAll("[data-xac]").forEach(b => b.onclick = () => { st.account_id = b.dataset.xac; sh.querySelectorAll("[data-xac]").forEach(x => x.classList.toggle("on", x === b)); });
     sh.querySelectorAll("[data-xg]").forEach(b => b.onclick = () => { st.goal_id = st.goal_id === b.dataset.xg ? null : b.dataset.xg; sh.querySelectorAll("[data-xg]").forEach(x => x.classList.toggle("on", x.dataset.xg === st.goal_id)); });
@@ -373,11 +412,15 @@ function txSheet(t, preset = {}, opts = {}) {
       const amount = Math.round(Number(st.amount) * 100) / 100;
       if (!(amount > 0)) { $("#xerr").textContent = "Enter an amount."; return; }
       if (st.type === "card_payment" && !st.to_account_id) { $("#xerr").textContent = "Pick the card you paid."; return; }
+      const sh2 = st.type === "expense" && pfo.on ? shares() : {}, theirs = Object.values(sh2).reduce((a, b) => a + b, 0);
+      if (st.type === "expense" && pfo.on && pfo.people.length && theirs > amount + 0.004) { $("#xerr").textContent = "Their shares add up to more than the amount."; return; }
       const o = { type: st.type, amount, date: st.date, time: st.time, category_id: st.category_id, account_id: st.account_id || null,
         to_account_id: st.type === "card_payment" || st.type === "saving" ? (st.to_account_id || null) : null, goal_id: st.type === "saving" ? (st.goal_id || null) : null, payee: (st.type === "expense" || st.type === "income") ? (st.payee || "").trim() || null : null, note: (st.note || "").trim() || null, needs_review: false };
       try {
-        if (isNew) S.tx.unshift(await db.insert("myday_transactions", { ...o, source: "manual" }));
-        else Object.assign(t, await db.update("myday_transactions", t.id, o));
+        let saved;
+        if (isNew) { saved = await db.insert("myday_transactions", { ...o, source: "manual" }); S.tx.unshift(saved); }
+        else { Object.assign(t, await db.update("myday_transactions", t.id, o)); saved = t; }
+        await syncIous(saved, o.type === "expense" && pfo.on ? sh2 : {}, prevIous);
         if (o.type === "expense" && o.payee && (o.category_id || o.account_id)) learn(o.payee, o.category_id, o.account_id);
         S.tx.sort((a, b) => b.date.localeCompare(a.date) || (b.time || "").localeCompare(a.time || ""));
         if (window.MD.refreshGoalTx && (o.goal_id || t.goal_id)) await window.MD.refreshGoalTx();
@@ -388,12 +431,24 @@ function txSheet(t, preset = {}, opts = {}) {
       } catch (e) { fail(e); }
     };
     const del = $("#xdel"); if (del) del.onclick = async () => {
-      try { await db.remove("myday_transactions", t.id); S.tx = S.tx.filter(x => x.id !== t.id); if (t.goal_id && window.MD.refreshGoalTx) await window.MD.refreshGoalTx(); if (t.type === "saving") await refreshSaving(); closeSheet(); render();
-        toast("Deleted", async () => { S.tx.unshift(await db.restore("myday_transactions", t.id)); S.tx.sort((a, b) => b.date.localeCompare(a.date)); render(); });
+      try { await db.remove("myday_transactions", t.id); S.tx = S.tx.filter(x => x.id !== t.id);
+        const gone = iousOf(t.id); for (const i of gone) await db.remove("myday_ious", i.id); S.ious = (S.ious || []).filter(i => i.tx_id !== t.id);
+        if (t.goal_id && window.MD.refreshGoalTx) await window.MD.refreshGoalTx(); if (t.type === "saving") await refreshSaving(); closeSheet(); render();
+        toast("Deleted", async () => { S.tx.unshift(await db.restore("myday_transactions", t.id)); for (const i of gone) S.ious.push(await db.restore("myday_ious", i.id)); S.tx.sort((a, b) => b.date.localeCompare(a.date)); render(); });
         if (opts.review) setTimeout(nextReview, 300); } catch (e) { fail(e); }
     };
   };
   openSheet(draw(), mount);
+}
+async function syncIous(t, want, prev) {
+  S.ious = S.ious || [];
+  for (const i of prev) {
+    const amt = want[i.person];
+    if (!(amt > 0)) { if (paidBack(i) > 0) continue; await db.remove("myday_ious", i.id); S.ious = S.ious.filter(k => k.id !== i.id); }
+    else if (Number(i.amount) !== amt || i.title !== (t.payee || t.note || null) || i.date !== t.date) Object.assign(i, await db.update("myday_ious", i.id, { amount: amt, title: t.payee || t.note || null, date: t.date }));
+  }
+  for (const [person, amt] of Object.entries(want)) if (amt > 0 && !prev.some(i => i.person === person))
+    S.ious.push(await db.insert("myday_ious", { tx_id: t.id, person, amount: amt, title: t.payee || t.note || null, date: t.date }));
 }
 function nextReview() {
   const q = S.tx.filter(t => t.needs_review).sort((a, b) => a.created_at.localeCompare(b.created_at));
@@ -405,6 +460,54 @@ function learn(payee, category_id, account_id) {
   rest("POST", "myday_payee_rules?on_conflict=user_id,payee_key", { payee_key, category_id, account_id, updated_at: nowIso() }, "resolution=merge-duplicates,return=representation")
     .then(r => { S.rules = S.rules.filter(x => x.payee_key !== payee_key).concat(r); }).catch(() => {});
 }
+
+/* ---------- owed to you ---------- */
+function owedCard() {
+  const list = openIous(); if (!list.length) return "";
+  return `<div class="card owedcard"><div class="between"><div><div class="lbl" style="margin:0 0 2px">OWED TO YOU</div><div class="tc-num" style="font-size:17px">${rm(sum(list, owing))}</div></div><span class="tiny muted">counts once they pay</span></div>
+    <div class="list" style="margin-top:8px;box-shadow:none;border:none;background:transparent">${list.map(i => `<div class="item owedrow"><span class="pdot">${esc(i.person.slice(0, 1).toUpperCase())}</span><div class="grow"><div class="title">${esc(i.person)} · ${rm(owing(i))}</div><div class="tiny muted">${esc(i.title || "")}${i.date ? " · " + fmtShort(i.date) : ""}${paidBack(i) ? ` · ${rm(paidBack(i))} paid` : ""}</div></div><button class="btn sun" style="height:32px;padding:0 12px" data-iougot="${i.id}">Got it</button></div>`).join("")}</div></div>`;
+}
+function gotSheet(i) {
+  if (!i) return;
+  const due = owing(i), banks = S.accounts.filter(a => a.kind === "bank");
+  const last = S.tx.find(t => t.type === "payback" && t.payee === i.person);
+  let aid = last?.account_id || S.settings.default_account_id || banks[0]?.id, letgo = false;
+  window.MD.openPop(`<h2 class="h2">${esc(i.person)} paid you back</h2><p class="small muted" style="margin:4px 0 14px">${esc(i.title || "")}${i.date ? " · " + fmtShort(i.date) : ""} · owes ${rm(due)}</p>
+    <div class="field"><label>How much did they pay? (RM)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="gpa" value="${due.toFixed(2)}"></div>
+    <div class="field"><label>Into</label>${chips(banks.map(a => [a.id, a.name]), aid, "gpac")}</div>
+    <label class="row small" id="glrow" style="margin:0 2px 12px;display:none"><input type="checkbox" id="glet"> Let the rest go (it becomes my spending)</label>
+    <div class="err" id="gerr"></div>
+    <button class="btn primary block" id="gok">Save</button>
+    <button class="btn block" id="gforgive" style="margin-top:8px">Let it all go</button>`, sh => {
+    const upd = () => { const v = Number($("#gpa").value) || 0; $("#glrow").style.display = v > 0 && v < due - 0.004 ? "" : "none"; };
+    $("#gpa").oninput = upd; upd();
+    sh.querySelectorAll("[data-gpac]").forEach(x => x.onclick = () => { aid = x.dataset.gpac; sh.querySelectorAll("[data-gpac]").forEach(y => y.classList.toggle("on", y === x)); });
+    $("#gok").onclick = async () => {
+      const amount = Math.round(Number($("#gpa").value) * 100) / 100; if (!(amount > 0)) { $("#gerr").textContent = "Enter how much they paid."; return; }
+      try {
+        S.tx.unshift(await db.insert("myday_transactions", { type: "payback", amount, date: today(), account_id: aid, payee: i.person, iou_id: i.id, source: "manual", note: i.title || null }));
+        const rest = Math.max(0, Math.round((due - amount) * 100) / 100), letRest = $("#glet").checked && rest > 0;
+        if (rest <= 0.004 || letRest) Object.assign(i, await db.update("myday_ious", i.id, { settled_at: nowIso(), forgiven: Number(i.forgiven || 0) + (letRest ? rest : 0) }));
+        closeSheet(); render(); toast(rest > 0.004 && !letRest ? `${i.person} still owes ${rm(rest)}` : `${i.person} is all paid up`);
+      } catch (e) { fail(e); }
+    };
+    $("#gforgive").onclick = async () => {
+      try { Object.assign(i, await db.update("myday_ious", i.id, { settled_at: nowIso(), forgiven: Number(i.forgiven || 0) + due })); closeSheet(); render(); toast(`Let go · ${rm(due)} is now your spending`); } catch (e) { fail(e); }
+    };
+  });
+}
+function paybackSheet(t) {
+  window.MD.openPop(`<h2 class="h2">${esc(t.payee || "")} paid you back ${rm(t.amount)}</h2><p class="small muted" style="margin:4px 0 14px">${fmtShort(t.date)} · into ${esc(acc(t.account_id)?.name || "")}</p>
+    <button class="btn danger block" id="pbdel">Undo this payback</button>`, () => {
+    $("#pbdel").onclick = async () => { try { await db.remove("myday_transactions", t.id); S.tx = S.tx.filter(x => x.id !== t.id);
+      const i = (S.ious || []).find(k => k.id === t.iou_id); if (i && i.settled_at && !Number(i.forgiven)) Object.assign(i, await db.update("myday_ious", i.id, { settled_at: null }));
+      closeSheet(); render(); toast("Payback removed"); } catch (e) { fail(e); } };
+  });
+}
+// reminders on Today after 7 days
+window.MD.owedDue = () => openIous().filter(i => i.date && i.date <= addDays(today(), -7)).map(i => [i.date, `<div class="item duecard"><span class="dueic" style="background:var(--lav)"><span class="pdot" style="margin:0">${esc(i.person.slice(0, 1).toUpperCase())}</span></span><div class="grow"><div class="title">${esc(i.person)} owes you ${rm(owing(i))}</div><div class="tiny muted">${esc(i.title || "")}${i.date ? " · " + fmtShort(i.date) : ""}</div></div>
+  <div class="duebtns"><button class="btn sun" data-iougot="${i.id}">Got it</button></div></div>`]);
+window.MD.gotSheet = gotSheet;
 window.MD.txSheet = txSheet;
 
 function savAccSheet(a) {

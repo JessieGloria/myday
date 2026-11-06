@@ -17,12 +17,13 @@ function stats(p) {
   const exp = tx.filter(t => t.type === "expense");
   const cat = id => (S.categories || []).find(c => c.id === id);
   const byCat = {}, byGroup = {};
+  const mine = t => window.MD.myAmt ? window.MD.myAmt(t) : Number(t.amount);
   exp.forEach(t => { const k = t.category_id || "none", g = cat(t.category_id)?.spend_group || "lifestyle";
-    byCat[k] = (byCat[k] || 0) + Number(t.amount); byGroup[g] = (byGroup[g] || 0) + Number(t.amount); });
+    byCat[k] = (byCat[k] || 0) + mine(t); byGroup[g] = (byGroup[g] || 0) + mine(t); });
   const top = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => [cat(k)?.name || "No category", v]);
   const pm = window.MD.payLeft ? window.MD.payLeft(p) : null;
   return {
-    income: sum(tx.filter(t => t.type === "income")), spent: sum(exp), saved: sum(tx.filter(t => t.type === "saving")),
+    income: sum(tx.filter(t => t.type === "income")), spent: exp.reduce((s, t) => s + mine(t), 0), saved: sum(tx.filter(t => t.type === "saving")),
     top, byGroup, bills: exp.filter(t => t.bill_id).length, billsAmt: sum(exp.filter(t => t.bill_id)), left: pm ? pm.left : null
   };
 }

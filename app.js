@@ -377,6 +377,7 @@ function dueSoon() {
     items.push([r.due_date, `<button class="item" style="width:100%;text-align:left" data-dsrem="${r.id}"><div class="grow"><div class="title">${esc(r.name)}</div><div class="tiny muted">Life admin</div></div><span class="pill ${d < 0 ? "rose" : "warn"}">${d < 0 ? -d + "d late" : d === 0 ? "Today" : d === 1 ? "Tomorrow" : "in " + d + " days"}</span></button>`]); });
   (window.MD.billsDueSoon ? window.MD.billsDueSoon() : []).forEach(x => items.push([x.due, `<button class="item" style="width:100%;text-align:left" data-dsbill="1"><div class="grow"><div class="title">${esc(x.b.name)}</div><div class="tiny muted">Bill${x.b.amount ? " · RM " + Number(x.b.amount).toFixed(2) : ""}</div></div><span class="pill ${x.status === "late" ? "rose" : "warn"}">${x.days < 0 ? -x.days + "d late" : x.days === 0 ? "Today" : x.days === 1 ? "Tomorrow" : "in " + x.days + " days"}</span></button>`]));
   if (window.MD.extraDue) items.push(...window.MD.extraDue());
+  if (window.MD.owedDue) items.push(...window.MD.owedDue());
   if (window.MD.routinesDue && S.todayView !== "routines") items.push(...window.MD.routinesDue());
   items.sort((a, b) => a[0].localeCompare(b[0]));
   const lp = window.MD.lastPeriod && window.MD.periodOf ? window.MD.lastPeriod() : null;
@@ -386,6 +387,7 @@ function dueSoon() {
 }
 function bindToday() {
   window.MD.bindExtraDue && window.MD.bindExtraDue();
+  document.querySelectorAll("[data-iougot]").forEach(b => b.onclick = () => window.MD.gotSheet((S.ious || []).find(i => i.id === b.dataset.iougot)));
   document.querySelectorAll("[data-dsrem]").forEach(b => b.onclick = () => window.MD.remSheet(S.reminders.find(r => r.id === b.dataset.dsrem)));
   document.querySelectorAll("[data-dsbill]").forEach(b => b.onclick = () => { S.tab = "money"; S.moneyView = "bills"; S.moneyFrom = null; render(); window.scrollTo(0, 0); });
   const rc = $("#recapcard"); if (rc) rc.onclick = () => window.MD.recapSheet();
@@ -650,20 +652,7 @@ function bindBuy() {
   };
   document.querySelectorAll("[data-bchk]").forEach(b => b.onclick = async () => {
     const x = S.shopping.find(y => y.id === b.dataset.bchk);
-    if (x.done_at) { try { Object.assign(x, await db.update("myday_shopping", x.id, { done_at: null, price: null }));
-      const lt = (S.tx || []).find(t => t.shopping_id === x.id); if (lt) { await db.remove("myday_transactions", lt.id); S.tx = S.tx.filter(t => t !== lt); }
-      render(); } catch (e) { fail(e); } return; }
-    openPop(`<h2 class="h2">Bought ${esc(x.title)}</h2><p class="small muted" style="margin:4px 0 14px">Add the price if you like. You can skip it.</p>
-      <div class="field"><label>Price (RM)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="bp" placeholder="0.00"></div>
-      <div class="btnrow"><button class="btn" id="bskip">Skip</button><button class="btn primary" id="bok">Save</button></div>`, () => {
-      $("#bp").focus();
-      const go = async price => { try { Object.assign(x, await db.update("myday_shopping", x.id, { done_at: nowIso(), price }));
-        if (price && S.categories) { const c = S.categories.find(k => k.kind === "expense" && k.name.toLowerCase() === x.group_name.toLowerCase()) || S.categories.find(k => k.name === "Shopping");
-          S.tx.unshift(await db.insert("myday_transactions", { type: "expense", amount: price, date: today(), category_id: c?.id || null, account_id: S.settings.default_account_id, payee: x.title, source: "shopping", shopping_id: x.id })); }
-        closeSheet(); render(); if (price) toast("Saved in Money too"); } catch (e) { fail(e); } };
-      $("#bskip").onclick = () => go(null);
-      $("#bok").onclick = () => { const v = $("#bp").value; go(v === "" ? null : Math.round(Number(v) * 100) / 100); };
-    });
+    try { Object.assign(x, await db.update("myday_shopping", x.id, { done_at: x.done_at ? null : nowIso() })); if (x.done_at) window.ART.celebrate(`[data-bchk="${x.id}"]`); render(); } catch (e) { fail(e); }
   });
   document.querySelectorAll("[data-bdel]").forEach(b => b.onclick = async () => {
     const id = b.dataset.bdel;
@@ -800,7 +789,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 35 (date strip stays put)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 36 (paid for others)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);

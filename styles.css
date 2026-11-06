@@ -689,3 +689,11 @@ body{background:transparent!important}
 .nowdot.night::after{background:rgba(142,146,224,.3)}
 @keyframes nowpulse{from{transform:scale(.6);opacity:1}to{transform:scale(1.6);opacity:0}}
 @media (prefers-reduced-motion: reduce){.nowdot::after{animation:none}}
+
+/* ---------- v36: paid for others ---------- */
+.pfobox{background:var(--lav);border-radius:16px;padding:12px 12px 4px;margin:-6px 0 14px}
+.pfobox .paint button{background:var(--card)}
+.pfobox .paint button.on{background:var(--navy);color:#fff}
+.owedcard{margin-top:10px;padding:14px 14px 6px}
+.owedrow{padding:9px 2px!important}
+.owedrow .pdot,.dueic .pdot{width:26px;height:26px;border-radius:50%;background:var(--lav);color:var(--peri);font-weight:700;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:none}
