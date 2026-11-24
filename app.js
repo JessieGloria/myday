@@ -789,7 +789,7 @@ function todaySettings() {
     <p class="tiny muted" style="margin:8px 2px">Cleared items are only hidden, so they can be brought back if needed.</p>
     <div class="lbl">Account</div><div class="small muted" style="margin:0 2px 10px">${esc(session?.email || "")}</div>
     <button class="btn block danger" id="sout">Sign out</button>
-    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 36 (paid for others)</p>`, () => {
+    <p class="tiny faint" style="text-align:center;margin-top:12px">My Day · version 38 (SPayLater as a bill)</p>`, () => {
     const clear = async (table, list, key, msg) => {
       if (!list.length) { toast("Nothing to clear"); return; }
       const ids = list.map(x => x.id);

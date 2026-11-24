@@ -107,7 +107,8 @@ function accBalance(a) {
   return b;
 }
 function cardOwed() {
-  return S.accounts.filter(a => a.kind === "card").map(a => ({ a, owed: Number(a.opening_balance || 0) + sum(S.tx.filter(t => t.type === "expense" && t.account_id === a.id)) - sum(S.tx.filter(t => t.type === "card_payment" && t.to_account_id === a.id)) }));
+  return S.accounts.filter(a => a.kind === "card").map(a => ({ a, owed: Number(a.opening_balance || 0) + sum(S.tx.filter(t => t.type === "expense" && t.account_id === a.id))
+    + sum(S.tx.filter(t => t.type === "card_payment" && t.account_id === a.id)) - sum(S.tx.filter(t => t.type === "card_payment" && t.to_account_id === a.id)) }));
 }
 // money still to be billed on a card from instalment plans (the bank blocks it from your limit)
 function instLeft(card) {
@@ -145,7 +146,7 @@ function payMath(p, depth = 0) {
   const tx = periodTx(p), isCard = t => acc(t.account_id)?.kind === "card";
   const income = sum(tx.filter(t => t.type === "income")), bankSpent = sum(tx.filter(t => t.type === "expense" && !isCard(t)));
   const cardSpent = sum(tx.filter(t => t.type === "expense" && isCard(t))), saved = sum(tx.filter(t => t.type === "saving"));
-  const cardPaid = sum(tx.filter(t => t.type === "card_payment")), backIn = sum(tx.filter(t => t.type === "payback"));
+  const cardPaid = sum(tx.filter(t => t.type === "card_payment" && !isCard(t))), backIn = sum(tx.filter(t => t.type === "payback"));
   let carry = 0;
   if (depth < 6 && p.from > (S.txFrom || "") + "-01") { const pp = periodOf(addDays(p.from, -1)); if (periodTx(pp).some(t => t.type === "income")) carry = Math.max(0, payMath(pp, depth + 1).left); }
   return { tx, income, bankSpent, cardSpent, saved, cardPaid, backIn, carry, left: income + carry + backIn - bankSpent - saved - cardPaid };
@@ -169,16 +170,18 @@ function payCard(p) {
       ${carry ? row("Left from last pay", carry, "+") : ""}${backIn ? row("Paid back to you", backIn, "+") : ""}${row("Spent from bank", bankSpent)}${row("Saved", saved)}${cardPaid ? row("Card paid", cardPaid) : ""}
       ${cur ? `<div class="pc-line"></div>
       <button class="pc-row pc-btn" id="mstill"><span>Bills still to pay${todo.length ? ` · ${todo.length}` : ""} ${I.right.replace("<svg", '<svg width="12" height="12"')}</span><b>− ${rm(still)}</b></button>
-      ${row("Credit card", owed)}
+      ${row(cardOwed().some(x => !isCredit(x.a) && x.owed > 0.004) ? "Credit card & " + cardOwed().filter(x => !isCredit(x.a) && x.owed > 0.004).map(x => x.a.name).join(", ") : "Credit card", owed)}
       <div class="pc-after"><span>After bills &amp; card</span><b style="${neg(after)}">${after < 0 ? "−" : ""}${rm(Math.abs(after))}</b></div>` : ""}
       ${budget ? `<div class="pc-note">Budget: ${rm(Math.max(0, budget - allSpent))} left of ${rm0(budget)}</div>` : ""}
     </div>
   </div>`;
 }
+// a "card" account with a credit limit is a real credit card; one without (like SPayLater) is just a bill to pay
+const isCredit = a => Number(a.credit_limit || 0) > 0;
 function cardTile(x) {
   const lim = Number(x.a.credit_limit || 0), inst = instLeft(x.a), used = Math.max(0, x.owed) + inst, avail = lim - used;
   return `<div class="card cardtile" style="margin-top:10px">
-    <div class="between"><div><div class="small muted">${esc(x.a.name)}</div><div class="h2">${rm(x.owed)} <span class="small muted" style="font-weight:400">owed</span></div></div><button class="btn" data-paycard="${x.a.id}">Pay card</button></div>
+    <div class="between"><div><div class="small muted">${esc(x.a.name)}</div><div class="h2">${rm(x.owed)} <span class="small muted" style="font-weight:400">${isCredit(x.a) ? "owed" : "to pay"}</span></div></div><button class="btn" data-paycard="${x.a.id}">${isCredit(x.a) ? "Pay card" : "Pay bill"}</button></div>
     ${lim ? `<div class="limbar"><i class="lo" style="width:${Math.min(100, Math.max(0, x.owed) / lim * 100)}%"></i><i class="li" style="width:${Math.min(100, inst / lim * 100)}%"></i></div>
     <div class="between tiny"><span><span class="accdot" style="background:#E8A0A0"></span> Owed ${rm0(Math.max(0, x.owed))}${inst ? ` <span class="accdot" style="background:#C9CBF3;margin-left:6px"></span> Instalments left ${rm0(inst)}` : ""}</span></div>
     <div class="small" style="margin-top:6px">Available <b>${rm(avail)}</b> <span class="muted">of ${rm0(lim)}</span></div>` : ""}
@@ -256,7 +259,7 @@ function viewOverview() {
   const review = S.tx.filter(t => t.needs_review);
   const spentOnly = !budget && !tt.income;  // no income or budget yet: just show what you've spent
   const left = budget ? budget - tt.spent : spentOnly ? tt.spent : tt.income - tt.spent - tt.saved;
-  const owed = cardOwed().filter(x => Math.abs(x.owed) > 0.004);
+  const owed = cardOwed().filter(x => isCredit(x.a) ? Math.abs(x.owed) > 0.004 : x.owed > 0.004);
   const bills = billsInPeriod(p).filter(x => x.status !== "paid");
   const cats = expCats().map(c => ({ c, spent: sum(periodTx(p).filter(t => t.type === "expense" && t.category_id === c.id), myAmt), budget: Number(c.budget || 0) }))
     .filter(x => x.spent || x.budget).sort((a, b) => b.spent - a.spent);
@@ -369,7 +372,7 @@ function txSheet(t, preset = {}, opts = {}) {
   const draw = () => {
     const isCardPay = st.type === "card_payment";
     const catList = st.type === "income" ? incCats() : st.type === "expense" ? expCats() : [];
-    const fromAcc = S.accounts.filter(a => a.kind !== "savings" && (!(isCardPay || st.type === "saving") || a.kind !== "card"));
+    const fromAcc = S.accounts.filter(a => a.kind !== "savings" && (isCardPay ? a.id !== st.to_account_id : (st.type !== "saving" || a.kind !== "card")));
     return `<div class="between"><h2 class="h2">${opts.review ? "Check this expense" : isNew ? "Add money" : "Edit"}</h2>${opts.review ? `<span class="tiny muted">${opts.review}</span>` : ""}</div>
     ${opts.review ? '<p class="small muted" style="margin:4px 0 0">Read from your screenshot. Fix anything that looks wrong.</p>' : ""}
     <div class="seg">${[["expense", "Spent"], ["income", "Income"], ["saving", "Saved"], ["card_payment", "Card bill"]].map(([k, l]) => `<button type="button" data-ty="${k}" class="${st.type === k ? "on" : ""}">${l}</button>`).join("")}</div>
@@ -405,13 +408,14 @@ function txSheet(t, preset = {}, opts = {}) {
     sh.querySelectorAll("[data-xc]").forEach(b => b.onclick = () => { st.category_id = st.category_id === b.dataset.xc ? null : b.dataset.xc; sh.querySelectorAll("[data-xc]").forEach(x => x.classList.toggle("on", x.dataset.xc === st.category_id)); });
     sh.querySelectorAll("[data-xac]").forEach(b => b.onclick = () => { st.account_id = b.dataset.xac; sh.querySelectorAll("[data-xac]").forEach(x => x.classList.toggle("on", x === b)); });
     sh.querySelectorAll("[data-xg]").forEach(b => b.onclick = () => { st.goal_id = st.goal_id === b.dataset.xg ? null : b.dataset.xg; sh.querySelectorAll("[data-xg]").forEach(x => x.classList.toggle("on", x.dataset.xg === st.goal_id)); });
-    sh.querySelectorAll("[data-xto]").forEach(b => b.onclick = () => { st.to_account_id = b.dataset.xto; sh.querySelectorAll("[data-xto]").forEach(x => x.classList.toggle("on", x === b)); });
+    sh.querySelectorAll("[data-xto]").forEach(b => b.onclick = () => { st.to_account_id = b.dataset.xto; if (st.type === "card_payment") { if (st.account_id === st.to_account_id) st.account_id = S.accounts.find(k => k.kind === "bank")?.id; keep(); sh.innerHTML = '<div class="grab"></div>' + draw(); mount(sh); return; } sh.querySelectorAll("[data-xto]").forEach(x => x.classList.toggle("on", x === b)); });
     if (isNew) setTimeout(() => $("#xa")?.focus(), 50);
     $("#xsave").onclick = async () => {
       keep();
       const amount = Math.round(Number(st.amount) * 100) / 100;
       if (!(amount > 0)) { $("#xerr").textContent = "Enter an amount."; return; }
       if (st.type === "card_payment" && !st.to_account_id) { $("#xerr").textContent = "Pick the card you paid."; return; }
+      if (st.type === "card_payment" && st.account_id === st.to_account_id) { $("#xerr").textContent = "Pick a different account to pay from."; return; }
       const sh2 = st.type === "expense" && pfo.on ? shares() : {}, theirs = Object.values(sh2).reduce((a, b) => a + b, 0);
       if (st.type === "expense" && pfo.on && pfo.people.length && theirs > amount + 0.004) { $("#xerr").textContent = "Their shares add up to more than the amount."; return; }
       const o = { type: st.type, amount, date: st.date, time: st.time, category_id: st.category_id, account_id: st.account_id || null,
@@ -658,10 +662,18 @@ const snooze = k => { try { localStorage.setItem("myday.snooze." + k, today()); 
 const payDayOf = m => (S.payDates || []).find(p => p.date.startsWith(m))?.date || null;
 window.MD.isPayDay = ds => (S.payDates || []).some(p => p.date === ds);
 const salaryIn = m => S.tx.some(t => t.type === "income" && t.date.startsWith(m) && t.category_id === salaryCat()?.id);
+// salary lands the night before pay day: from 6pm that evening it counts for the pay day itself
+function salaryTarget() {
+  const t = today(), tm = addDays(t, 1);
+  if (new Date().getHours() >= 18 && (S.payDates || []).some(p => p.date === tm)) return tm;
+  const pd = payDayOf(t.slice(0, 7));
+  return pd && t >= pd ? pd : null;
+}
 function salaryDue() {
-  const m = today().slice(0, 7), day = Number(today().slice(8)), pd = payDayOf(m);
+  const m = today().slice(0, 7), day = Number(today().slice(8)), target = salaryTarget();
   if (snoozed("salary")) return false;
-  if (pd ? today() < pd : day < (S.settings.salary_from_day || 20)) return false;
+  if (target) return !salaryIn(target.slice(0, 7));
+  if (payDayOf(m) || day < (S.settings.salary_from_day || 20)) return false;
   return !salaryIn(m);
 }
 function rentWaiting() {
@@ -679,7 +691,7 @@ function cardsToPay() {
 window.MD.extraDue = () => {
   const out = [];
   { const m = today().slice(0, 7), pd = payDayOf(m), dd = pd ? Math.round((parse(pd) - parse(today())) / 864e5) : null;
-    if (pd && dd > 0 && dd <= 7 && !salaryIn(m)) out.push([pd, `<div class="item duecard"><span class="dueic" style="background:var(--sunbg)">${I.coin}</span><div class="grow"><div class="title">Pay day ${dd === 1 ? "tomorrow" : `in ${dd} days`}</div><div class="tiny muted">${fmtShort(pd)}</div></div><span class="pill warn">${dd}d</span></div>`]); }
+    if (pd && dd > 0 && dd <= 7 && !salaryIn(m) && !salaryDue()) out.push([pd, `<div class="item duecard"><span class="dueic" style="background:var(--sunbg)">${I.coin}</span><div class="grow"><div class="title">Pay day ${dd === 1 ? "tomorrow" : `in ${dd} days`}</div><div class="tiny muted">${fmtShort(pd)}</div></div><span class="pill warn">${dd}d</span></div>`]); }
   if (salaryDue()) { const ls = lastSalary();
     out.push(["0", `<div class="item duecard"><span class="dueic" style="background:var(--sagebg)">${I.coin}</span><div class="grow"><div class="title">Has your salary come in?</div><div class="tiny muted">${ls ? `Last time ${rm(ls.amount)} on ${fmtShort(ls.date)}` : "Add it once it's in your account"}</div></div>
       <div class="duebtns"><button class="btn sun" data-salary="1">Add</button><button class="small muted" data-snooze="salary">Not yet</button></div></div>`]); }
@@ -689,7 +701,7 @@ window.MD.extraDue = () => {
     if (pm.carry > 0.5 && sav && daysBetweenD(p.from, today()) <= 7 && !pm.tx.some(t => t.type === "saving") && !snoozedFor(key))
       out.push(["0", `<div class="item duecard"><span class="dueic" style="background:var(--sunbg)">${window.ART.jar(28)}</span><div class="grow"><div class="title">${rm(pm.carry)} left from last pay</div><div class="tiny muted">Move some to ${esc(sav.name)}?</div></div>
       <div class="duebtns"><button class="btn sun" data-carrysave="${sav.id}">Save</button><button class="small muted" data-snoozep="${key}">Not now</button></div></div>`]); }
-  cardsToPay().forEach(c => out.push(["1", `<div class="item duecard"><span class="dueic" style="background:var(--rosebg)">${I.wallet}</span><div class="grow"><div class="title">Pay ${esc(c.a.name)}</div><div class="tiny muted">${rm(c.owed)} owed · ${c.lastPay ? `last paid ${c.days} days ago` : `not paid in ${c.days} days`}</div></div>
+  cardsToPay().forEach(c => out.push(["1", `<div class="item duecard"><span class="dueic" style="background:var(--rosebg)">${I.wallet}</span><div class="grow"><div class="title">Pay ${esc(c.a.name)}${isCredit(c.a) ? "" : " bill"}</div><div class="tiny muted">${rm(c.owed)} ${isCredit(c.a) ? "owed" : "to pay"} · ${c.lastPay ? `last paid ${c.days} days ago` : `not paid in ${c.days} days`}</div></div>
       <div class="duebtns"><button class="btn sun" data-paycard2="${c.a.id}">Pay</button><button class="small muted" data-snooze="card${c.a.id}">Later</button></div></div>`]));
   return out;
 };
@@ -703,10 +715,10 @@ window.MD.bindExtraDue = () => {
 };
 function salarySheet() {
   const ls = lastSalary(); let aid = S.settings.salary_account_id || ls?.account_id || S.accounts.find(a => /maybank/i.test(a.name) && a.kind === "bank")?.id || S.settings.default_account_id;
-  window.MD.openPop(`<h2 class="h2">Salary is in</h2><p class="small muted" style="margin:4px 0 14px">Saved as income for ${MONL[Number(today().slice(5, 7)) - 1]}.</p>
+  window.MD.openPop(`<h2 class="h2">Salary is in</h2><p class="small muted" style="margin:4px 0 14px">Saved as income for pay day, ${fmtShort(salaryTarget() || today())}.</p>
     <div class="field"><label>Amount (RM)</label><input type="number" inputmode="decimal" step="0.01" id="slm" value="${S.settings.salary_amount ?? ls?.amount ?? ""}" placeholder="0.00"></div>
     <div class="field"><label>Into</label>${chips(S.accounts.filter(a => a.kind === "bank").map(a => [a.id, a.name]), aid, "sla")}</div>
-    <div class="field"><label>Date</label><input type="date" id="sld2" value="${today()}"></div>
+    <div class="field"><label>Date</label><input type="date" id="sld2" value="${salaryTarget() || today()}"></div>
     <div class="err" id="slerr"></div><button class="btn primary block" id="slok">Save</button>`, sh => {
     sh.querySelectorAll("[data-sla]").forEach(x => x.onclick = () => { aid = x.dataset.sla; sh.querySelectorAll("[data-sla]").forEach(y => y.classList.toggle("on", y === x)); });
     $("#slok").onclick = async () => {
