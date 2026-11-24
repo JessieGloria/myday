@@ -121,7 +121,8 @@ function cardOwed() {
 // money still to be billed on a card from instalment plans (the bank blocks it from your limit)
 function instLeft(card) {
   const m = today().slice(0, 7);
-  return S.bills.filter(b => b.account_id === card.id && b.installments_total && b.installment_first).reduce((s, b) => {
+  // only bank instalment plans that charge the card by themselves (like the MacBook) hold the limit; bills you pay with the card (like SPayLater) don't
+  return S.bills.filter(b => b.account_id === card.id && b.auto_pay && b.installments_total && b.installment_first).reduce((s, b) => {
     const n = instNo(b, m), billed = S.tx.some(x => x.bill_id === b.id && x.bill_period === m && x.type === "expense");
     const left = Math.max(0, Math.min(b.installments_total, b.installments_total - n + (billed ? 0 : 1)));
     return s + left * Number(b.amount || 0); }, 0);
