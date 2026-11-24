@@ -11,8 +11,16 @@ const curMonth = () => today().slice(0, 7);
 /* money runs pay day to pay day: S.moneyFrom is the start of the period on screen */
 const nextMonth = m => { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
 const monthEnd = m => { const [y, mo] = m.split("-").map(Number); return `${m}-${pad(new Date(y, mo, 0).getDate())}`; };
+// a pay period starts the day your salary actually lands; before the first recorded salary, the pay-date list is used
+function periodStarts() {
+  const sc = S.categories && S.categories.find(c => c.kind === "income" && /salary|gaji/i.test(c.name));
+  const sal = [...new Set((S.tx || []).filter(t => t.type === "income" && sc && t.category_id === sc.id).map(t => t.date))].sort();
+  const first = sal[0] || "9999";
+  const pays = (S.payDates || []).map(p => p.date).filter(x => x < first && x <= today());
+  return [...new Set([...pays, ...sal])].sort();
+}
 function periodOf(d) {
-  const L = (S.payDates || []).map(p => p.date).sort(); let from = null, next = null;
+  const L = periodStarts(); let from = null, next = null;
   for (const x of L) { if (x <= d) from = x; else { next = x; break; } }
   if (!from) { const m = d.slice(0, 7), end = monthEnd(m); return { from: `${m}-01`, to: next && next <= end ? addDays(next, -1) : end }; }
   return { from, to: next ? addDays(next, -1) : null };
@@ -669,10 +677,11 @@ function salaryTarget() {
   const pd = payDayOf(t.slice(0, 7));
   return pd && t >= pd ? pd : null;
 }
+const salaryFor = pd => S.tx.some(t => t.type === "income" && t.category_id === salaryCat()?.id && t.date >= addDays(pd, -3) && t.date <= addDays(pd, 10));
 function salaryDue() {
   const m = today().slice(0, 7), day = Number(today().slice(8)), target = salaryTarget();
   if (snoozed("salary")) return false;
-  if (target) return !salaryIn(target.slice(0, 7));
+  if (target) return !salaryFor(target);
   if (payDayOf(m) || day < (S.settings.salary_from_day || 20)) return false;
   return !salaryIn(m);
 }
@@ -691,7 +700,7 @@ function cardsToPay() {
 window.MD.extraDue = () => {
   const out = [];
   { const m = today().slice(0, 7), pd = payDayOf(m), dd = pd ? Math.round((parse(pd) - parse(today())) / 864e5) : null;
-    if (pd && dd > 0 && dd <= 7 && !salaryIn(m) && !salaryDue()) out.push([pd, `<div class="item duecard"><span class="dueic" style="background:var(--sunbg)">${I.coin}</span><div class="grow"><div class="title">Pay day ${dd === 1 ? "tomorrow" : `in ${dd} days`}</div><div class="tiny muted">${fmtShort(pd)}</div></div><span class="pill warn">${dd}d</span></div>`]); }
+    if (pd && dd > 0 && dd <= 7 && !salaryFor(pd) && !salaryDue()) out.push([pd, `<div class="item duecard"><span class="dueic" style="background:var(--sunbg)">${I.coin}</span><div class="grow"><div class="title">Pay day ${dd === 1 ? "tomorrow" : `in ${dd} days`}</div><div class="tiny muted">${fmtShort(pd)}</div></div><span class="pill warn">${dd}d</span></div>`]); }
   if (salaryDue()) { const ls = lastSalary();
     out.push(["0", `<div class="item duecard"><span class="dueic" style="background:var(--sagebg)">${I.coin}</span><div class="grow"><div class="title">Has your salary come in?</div><div class="tiny muted">${ls ? `Last time ${rm(ls.amount)} on ${fmtShort(ls.date)}` : "Add it once it's in your account"}</div></div>
       <div class="duebtns"><button class="btn sun" data-salary="1">Add</button><button class="small muted" data-snooze="salary">Not yet</button></div></div>`]); }
@@ -715,10 +724,10 @@ window.MD.bindExtraDue = () => {
 };
 function salarySheet() {
   const ls = lastSalary(); let aid = S.settings.salary_account_id || ls?.account_id || S.accounts.find(a => /maybank/i.test(a.name) && a.kind === "bank")?.id || S.settings.default_account_id;
-  window.MD.openPop(`<h2 class="h2">Salary is in</h2><p class="small muted" style="margin:4px 0 14px">Saved as income for pay day, ${fmtShort(salaryTarget() || today())}.</p>
+  window.MD.openPop(`<h2 class="h2">Salary is in</h2><p class="small muted" style="margin:4px 0 14px">Your new pay period starts on the day it came in.</p>
     <div class="field"><label>Amount (RM)</label><input type="number" inputmode="decimal" step="0.01" id="slm" value="${S.settings.salary_amount ?? ls?.amount ?? ""}" placeholder="0.00"></div>
     <div class="field"><label>Into</label>${chips(S.accounts.filter(a => a.kind === "bank").map(a => [a.id, a.name]), aid, "sla")}</div>
-    <div class="field"><label>Date</label><input type="date" id="sld2" value="${salaryTarget() || today()}"></div>
+    <div class="field"><label>Date it came in</label><input type="date" id="sld2" value="${today()}"></div>
     <div class="err" id="slerr"></div><button class="btn primary block" id="slok">Save</button>`, sh => {
     sh.querySelectorAll("[data-sla]").forEach(x => x.onclick = () => { aid = x.dataset.sla; sh.querySelectorAll("[data-sla]").forEach(y => y.classList.toggle("on", y === x)); });
     $("#slok").onclick = async () => {
