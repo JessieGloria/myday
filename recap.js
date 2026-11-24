@@ -27,7 +27,7 @@ function stats(p) {
     top, byGroup, bills: exp.filter(t => t.bill_id).length, billsAmt: sum(exp.filter(t => t.bill_id)), left: pm ? pm.left : null
   };
 }
-function recapSheet(from) {
+function recapSheet(from, asHtml) {
   const p = { ...(from ? per(from) : lastPeriod()) }, cur = per(today()), isCur = p.from === cur.from;
   if (!p.to || p.to > today()) p.to = isCur ? today() : p.to || today();
   const s = stats(p), pp = prevPeriod(p), ps = stats(pp), last = lastPeriod();
@@ -35,8 +35,8 @@ function recapSheet(from) {
   const groups = Object.entries(G).map(([k, [l, c]]) => ({ k, l, c, v: s.byGroup[k] || 0 })).filter(x => x.v > 0);
   const gtot = groups.reduce((a, x) => a + x.v, 0) || 1;
   const catsIn = k => (S.categories || []).filter(c => c.kind === "expense" && (c.spend_group || "lifestyle") === k).map(c => c.name).join(", ");
-  openSheet(`<div class="between"><div><div class="lbl" style="margin:0">MONEY RECAP</div><h2 class="h1" style="font-size:21px">${esc(isCur ? window.MD.fmtPeriod(cur) : window.MD.fmtPeriod(p))}</h2>${isCur ? '<div class="small muted">so far</div>' : ""}</div>
-      <div class="row"><button class="iconbtn" data-rm="${pp.from}" aria-label="Previous pay period">${I.left}</button>${p.from < cur.from ? `<button class="iconbtn" data-rm="${addDays(p.to, 1)}" aria-label="Next pay period">${I.right}</button>` : ""}</div></div>
+  const html = `<div class="between"><div><div class="lbl" style="margin:0">MONEY RECAP</div><h2 class="h1" style="font-size:21px">${esc(isCur ? window.MD.fmtPeriod(cur) : window.MD.fmtPeriod(p))}</h2>${isCur ? '<div class="small muted">so far</div>' : ""}</div>
+      <div class="row" ${asHtml ? 'style="display:none"' : ""}><button class="iconbtn" data-rm="${pp.from}" aria-label="Previous pay period">${I.left}</button>${p.from < cur.from ? `<button class="iconbtn" data-rm="${addDays(p.to, 1)}" aria-label="Next pay period">${I.right}</button>` : ""}</div></div>
     <div class="card leave" style="margin-top:14px">
       <div class="between" style="font-size:10.5px"><div><div class="muted">Income</div><div style="font-size:14px;font-weight:600;color:#BFE3C9">${rm(s.income)}</div></div>
       <div><div class="muted">Spent</div><div style="font-size:14px;font-weight:600;color:#F3B7B7">${rm(s.spent)}</div></div>
@@ -49,7 +49,9 @@ function recapSheet(from) {
     ${s.top.length ? `<div class="lbl">Where it went</div><div class="list">${s.top.map(([n, v], i) => `<div class="item"><div class="grow">${i + 1}. ${esc(n)}</div><span>${rm(v)}</span></div>`).join("")}</div>` : ""}
     ${s.bills ? `<div class="lbl">Bills</div><div class="list"><div class="item"><div class="grow">${s.bills} bill${s.bills > 1 ? "s" : ""} paid</div><span>${rm(s.billsAmt)}</span></div></div>` : ""}
     ${(S.goals || []).filter(g => !g.done_at).length ? `<div class="lbl">Savings jars</div><div class="list">${S.goals.filter(g => !g.done_at).map(g => { const sv = window.MD.goalSaved(g); return `<div class="item"><div class="grow">${esc(g.name)}</div><span>${rm(sv)} · ${Math.floor(Math.min(100, sv / g.target * 100))}%</span></div>`; }).join("")}</div>` : ""}
-    <p class="serif muted" style="text-align:center;margin:18px 0 4px">little by little, it adds up</p>`, sh => {
+    <p class="serif muted" style="text-align:center;margin:18px 0 4px">little by little, it adds up</p>`;
+  if (asHtml) return html;
+  openSheet(html, sh => {
     sh.querySelectorAll("[data-rm]").forEach(b => b.onclick = async () => { const nf = b.dataset.rm; if (window.MD.ensureMonth) await window.MD.ensureMonth(per(nf).from.slice(0, 7)).catch(() => {}); recapSheet(nf); });
   });
 }

@@ -278,11 +278,11 @@ function monthHeader() {
   const p = P(), cur = p.from === curPeriod().from;
   return `<div class="top"><div><h1 class="h1">Money</h1><div class="small muted">${fmtP(p)}${cur ? " · so far" : ""}</div></div>
     <div class="row"><button class="iconbtn" id="mprev" aria-label="Previous pay period">${I.left}</button><button class="iconbtn" id="mnext" aria-label="Next pay period" ${p.to ? "" : "disabled style=\"opacity:.35\""}>${I.right}</button><button class="iconbtn" id="msetup" aria-label="Categories">${I.gear}</button></div></div>
-    <div class="seg" style="margin-top:4px">${[["overview", "Overview"], ["history", "History"], ["bills", "Bills"]].map(([k, l]) => `<button data-mv="${k}" class="${S.moneyView === k ? "on" : ""}">${l}</button>`).join("")}</div>`;
+    <div class="seg" style="margin-top:4px">${[["overview", "Overview"], ["history", "History"], ["bills", "Bills"], ["recap", "Recap"]].map(([k, l]) => `<button data-mv="${k}" class="${S.moneyView === k ? "on" : ""}">${l}</button>`).join("")}</div>`;
 }
 function viewMoney() {
   if (S.moneyLoading) return monthHeader() + window.MD_loader("Counting your coins…");
-  return monthHeader() + ({ overview: viewOverview, history: viewHistory, bills: viewBills }[S.moneyView])();
+  return monthHeader() + ({ overview: viewOverview, history: viewHistory, bills: viewBills, recap: () => `<div class="recaptab">${window.MD.recapSheet(P().from, true)}</div>` }[S.moneyView])();
 }
 function viewOverview() {
   const p = P(), tt = totals(p), budget = Number(S.settings.monthly_budget || 0);
@@ -294,23 +294,47 @@ function viewOverview() {
   const cats = expCats().map(c => ({ c, spent: sum(periodTx(p).filter(t => t.type === "expense" && t.category_id === c.id), myAmt), budget: Number(c.budget || 0) }))
     .filter(x => x.spent || x.budget).sort((a, b) => b.spent - a.spent);
   const unc = sum(periodTx(p).filter(t => t.type === "expense" && !t.category_id), myAmt);
-  const bar = (spent, bud) => { const p = bud ? spent / bud : 0, col = !bud ? "var(--lav2)" : p > 1 ? "#D86A6A" : p > .8 ? "#E5B93A" : "var(--peri)";
+  const bar0 = (spent, bud) => { const p = bud ? spent / bud : 0, col = !bud ? "var(--lav2)" : p > 1 ? "#D86A6A" : p > .8 ? "#E5B93A" : "var(--peri)";
     return `<div class="bar"><i style="width:${bud ? Math.min(100, p * 100) : 100}%;background:${col}"></i></div>`; };
   const recent = periodTx(p).slice(0, 6);
   return `
   ${review.length ? `<button class="card between" id="mreview" style="width:100%;text-align:left;background:var(--sunbg);border:none;margin-bottom:12px"><div><div class="h2" style="color:var(--sunink)">${review.length} to check</div><div class="small" style="color:var(--sunink)">Saved from your screenshots. Tap to confirm.</div></div><span style="color:var(--sunink)">${I.right.replace("<svg", '<svg width="20" height="20"')}</span></button>` : ""}
   ${payCard(p)}
   ${owedCard()}
+  <button class="addmoney" id="maddmoney">${I.plus.replace("<svg", '<svg width="18" height="18"')} Add money</button>
   ${totalCard()}
-  <div class="mact">${[["expense", "Spent", I.coin, "var(--rosebg)"], ["income", "Income", I.plus, "var(--sagebg)"], ["saving", "Saved", I.target || I.plus, "var(--sunbg)"]].map(([k, l, ic, bg]) => `<button data-madd="${k}"><span class="qi" style="background:${bg}">${ic}</span>${l}</button>`).join("")}</div>
   ${owed.map(cardTile).join("")}
   ${bills.length ? `<div class="between"><div class="lbl">Bills due</div><button class="small" style="color:var(--peri)" data-mv="bills">See all</button></div>
     <div class="list">${bills.slice(0, 4).map(x => `<button class="item" style="width:100%;text-align:left" data-bill="${x.b.id}"><div class="grow"><div class="title">${esc(x.b.name)}</div><div class="tiny muted">${x.b.amount ? rm(x.b.amount) : "Amount varies"} · due ${fmtShort(x.due)}${(x.b.people || []).length ? ` · collected ${x.coll.filter(c => c.tx).length}/${x.coll.length}` : ""}</div></div>${billPill(x)}</button>`).join("")}</div>` : ""}
-  <div class="between"><div class="lbl">Spending by category</div><span><button class="small" style="color:var(--peri);margin-right:12px" id="mrecap">Recap</button><button class="small" style="color:var(--peri)" id="mbud">Budgets</button></span></div>
-  ${cats.length || unc ? `<div class="card">${cats.map(x => `<div style="margin:6px 0 12px"><div class="between small"><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${CCOL[x.c.color]};margin-right:6px"></span>${esc(x.c.name)}</span><span>${rm(x.spent)}${x.budget ? `<span class="muted"> / ${rm0(x.budget)}</span>` : ""}</span></div>${bar(x.spent, x.budget)}</div>`).join("")}
-    ${unc ? `<div class="between small" style="margin:6px 0"><span class="muted">No category yet</span><span>${rm(unc)}</span></div>` : ""}</div>` : '<div class="empty">No spending yet this pay period.</div>'}
+  <div class="lbl">Spending by category</div>
+  ${donut(cats, unc)}
   <div class="between"><div class="lbl">Recent</div>${recent.length ? '<button class="small" style="color:var(--peri)" data-mv="history">See all</button>' : ""}</div>
   ${recent.length ? `<div class="list">${recent.map(txRow).join("")}</div>` : '<div class="empty">Use the buttons above to add spending or income, or send a screenshot.</div>'}`;
+}
+/* spending by category as a donut: your share only, tap a slice or row to see its spending */
+const DONUT = ["#8E92E0", "#9CBBA4", "#F2C94C", "#E8A0A0", "#2B3060", "#F4B6D2", "#9DD3C0", "#E5A23A", "#C9CBF3", "#7FA38A", "#D9A6E8", "#B08968"];
+function donut(cats, unc) {
+  const rows = cats.filter(x => x.spent > 0).map((x, i) => ({ id: x.c.id, name: x.c.name, v: x.spent, b: x.budget, col: DONUT[i % DONUT.length] }));
+  if (unc > 0) rows.push({ id: "none", name: "No category", v: unc, b: 0, col: "#C9CED9" });
+  const budgetOnly = cats.filter(x => !x.spent && x.budget);
+  const tot = rows.reduce((s, x) => s + x.v, 0);
+  if (!tot && !budgetOnly.length) return '<div class="empty">No spending yet this pay period.</div>';
+  const R = 52, C = 2 * Math.PI * R; let off = 0;
+  const arcs = rows.map(x => { const len = x.v / tot * C, el = `<circle cx="70" cy="70" r="${R}" fill="none" stroke="${x.col}" stroke-width="20" stroke-dasharray="${Math.max(0, len - 1.5).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 70 70)" data-dcat="${x.id}"/>`; off += len; return el; }).join("");
+  const tone = x => !x.b ? "" : x.v > x.b ? "over" : x.v > x.b * .8 ? "near" : "";
+  return `<div class="card donutcard">
+    ${tot ? `<div class="donutwrap"><svg viewBox="0 0 140 140" class="donut" aria-hidden="true"><circle cx="70" cy="70" r="${R}" fill="none" stroke="var(--lav)" stroke-width="20"/>${arcs}</svg>
+      <div class="donutmid"><b>${rm0(tot)}</b><span class="tiny muted">spent</span></div></div>` : ""}
+    <div class="dlegend">${rows.map(x => `<button class="drow" data-dcat="${x.id}"><span class="accdot" style="background:${x.col}"></span><span class="grow small">${esc(x.name)}</span><span class="small ${tone(x)}"><b>${rm(x.v)}</b>${x.b ? ` <span class="muted">/ ${rm0(x.b)}</span>` : ""}</span><span class="tiny muted dpct">${Math.round(x.v / tot * 100)}%</span></button>`).join("")}
+      ${budgetOnly.map(x => `<button class="drow" data-dcat="${x.c.id}"><span class="accdot" style="background:var(--line)"></span><span class="grow small muted">${esc(x.c.name)}</span><span class="small muted">RM 0 / ${rm0(x.budget)}</span><span class="tiny muted dpct">0%</span></button>`).join("")}</div>
+  </div>`;
+}
+function catSheet(id) {
+  const p = P(), c = id === "none" ? null : cat(id), list = periodTx(p).filter(t => t.type === "expense" && (id === "none" ? !t.category_id : t.category_id === id));
+  openSheet(`<h2 class="h2">${esc(c ? c.name : "No category")}</h2><div class="small muted" style="margin:2px 0 12px">${esc(fmtP(p))} · ${rm(sum(list, myAmt))}${c && c.budget ? ` of ${rm0(c.budget)} budget` : ""}</div>
+    ${list.length ? `<div class="list">${list.map(txRow).join("")}</div>` : '<div class="empty">Nothing here this pay period.</div>'}`, sh => {
+    sh.querySelectorAll("[data-tx]").forEach(b => b.onclick = () => { const t = S.tx.find(x => x.id === b.dataset.tx); if (t.type === "payback") return paybackSheet(t); txSheet(t); });
+  });
 }
 function viewHistory() {
   const f = S.histFilter, all = periodTx(P()).filter(t => f === "all" || t.type === f || (f === "saving" && t.type === "card_payment"));
@@ -371,10 +395,9 @@ function bindMoney() {
   document.querySelectorAll("[data-paycard]").forEach(b => b.onclick = () => txSheet(null, { type: "card_payment", to_account_id: b.dataset.paycard, amount: cardOwed().find(x => x.a.id === b.dataset.paycard)?.owed }));
   const r = $("#mreview"); if (r) r.onclick = nextReview;
   document.querySelectorAll("[data-savacc]").forEach(b => b.onclick = () => savAccSheet(acc(b.dataset.savacc)));
-  const bu = $("#mbud"); if (bu) bu.onclick = budgetSheet;
-  const rc = $("#mrecap"); if (rc) rc.onclick = () => window.MD.recapSheet(P().from);
   const mt = $("#mtotal"); if (mt) mt.onclick = () => { S.totalOpen = !S.totalOpen; render(); };
-  document.querySelectorAll("[data-madd]").forEach(b => b.onclick = () => txSheet(null, { type: b.dataset.madd }));
+  const am = $("#maddmoney"); if (am) am.onclick = () => txSheet(null, { type: "expense" });
+  document.querySelectorAll("[data-dcat]").forEach(b => b.onclick = () => catSheet(b.dataset.dcat));
   const ms = $("#mstill"); if (ms) ms.onclick = () => { S.moneyFrom = null; S.moneyView = "bills"; render(); window.scrollTo(0, 0); };
   const ab = $("#addbill"); if (ab) ab.onclick = () => billSheet(null);
 }
@@ -655,20 +678,25 @@ function setupSheet() {
      <select data-cc="${c.id}" style="width:96px;height:34px;line-height:34px">${Object.keys(CCOL).map(k => `<option ${c.color === k ? "selected" : ""}>${k}</option>`).join("")}</select>
      <button class="x" data-rd="${c.id}" aria-label="Remove">×</button></div>`;
   openSheet(`<div class="row" style="margin-bottom:4px">${window.ART.jar(44)}<h2 class="h2">Money settings</h2></div>
-    <div class="lbl">Spending</div><div class="list">${expCats().map(row).join("")}</div>
+    <div class="lbl">Budgets per pay period</div>
+    <div class="list">
+      <div class="item"><div class="grow small"><b>Whole pay period</b></div><input type="number" inputmode="decimal" class="budin" data-ob="1" value="${S.settings.monthly_budget ?? ""}" placeholder="No limit"></div>
+      ${expCats().map(c => `<div class="item"><span style="width:10px;height:10px;border-radius:50%;flex:none;background:${CCOL[c.color]}"></span><div class="grow small">${esc(c.name)}</div><input type="number" inputmode="decimal" class="budin" data-cb="${c.id}" value="${c.budget ?? ""}" placeholder="—"></div>`).join("")}
+    </div>
+    <div class="lbl">Spending categories</div><div class="list">${expCats().map(row).join("")}</div>
     <button class="addline" id="addc">+ Add spending category</button>
     <div class="lbl">Income</div><div class="list">${incCats().map(row).join("")}</div>
     <button class="addline" id="addi">+ Add income category</button>
-    <div class="lbl">Salary reminder</div>
-    <div class="field"><label>Start asking "Has your salary come in?" from day</label><input type="number" min="1" max="31" id="sfd" value="${S.settings.salary_from_day || 20}"></div>
-    <button class="btn block" id="sfdsave">Save</button>
     <div class="lbl">Pay dates</div>
     <div class="list">${(S.payDates || []).filter(p => p.date >= today().slice(0, 4) + "-01-01").map(p => `<div class="item"><div class="grow small">${fmtShort(p.date)} ${p.date.slice(0, 4)}</div><button class="x" data-pdx="${p.id}" aria-label="Remove">×</button></div>`).join("") || '<div class="item small muted">No pay dates yet</div>'}</div>
     <input type="date" id="pdnew" style="margin-top:8px"><button class="btn block" id="pdadd" style="margin-top:8px">+ Add pay date</button>`, sh => {
     sh.querySelectorAll("[data-pdx]").forEach(b => b.onclick = async () => { try { await db.remove("myday_pay_dates", b.dataset.pdx); S.payDates = S.payDates.filter(x => x.id !== b.dataset.pdx); setupSheet(); render(); } catch (e) { fail(e); } });
     $("#pdadd").onclick = async () => { const d = $("#pdnew").value; if (!d) { window.ART.nudge($("#pdnew")); return; }
       try { S.payDates.push(await db.insert("myday_pay_dates", { date: d })); S.payDates.sort((a, b) => a.date.localeCompare(b.date)); setupSheet(); render(); toast("Pay date added"); } catch (e) { fail(e); } };
-    $("#sfdsave").onclick = async () => { try { S.settings = (await rest("PATCH", `myday_settings?user_id=eq.${S.settings.user_id}`, { salary_from_day: Math.max(1, Math.min(31, Number($("#sfd").value) || 20)) }))[0]; toast("Saved"); render(); } catch (e) { fail(e); } };
+    sh.querySelectorAll("[data-cb]").forEach(inp => inp.onchange = async () => { const c = cat(inp.dataset.cb), v = inp.value === "" ? null : Math.round(Number(inp.value) * 100) / 100;
+      try { Object.assign(c, await db.update("myday_categories", c.id, { budget: v })); render(); toast(v ? `${c.name}: ${rm0(v)} budget` : `${c.name}: no budget`); } catch (e) { fail(e); } });
+    const ob = sh.querySelector("[data-ob]"); if (ob) ob.onchange = async () => { const v = ob.value === "" ? null : Number(ob.value);
+      try { S.settings = (await rest("PATCH", `myday_settings?user_id=eq.${S.settings.user_id}`, { monthly_budget: v }))[0]; render(); toast("Saved"); } catch (e) { fail(e); } };
     sh.querySelectorAll("[data-rn]").forEach(inp => inp.onchange = async () => { const id = inp.dataset.rn, v = inp.value.trim(); if (!v) return;
       try { Object.assign(cat(id), await db.update("myday_categories", id, { name: v })); toast("Renamed"); } catch (e) { fail(e); } });
     sh.querySelectorAll("[data-cc]").forEach(x => x.onchange = async () => { try { Object.assign(cat(x.dataset.cc), await db.update("myday_categories", x.dataset.cc, { color: x.value })); setupSheet(); } catch (e) { fail(e); } });

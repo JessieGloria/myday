@@ -697,3 +697,22 @@ body{background:transparent!important}
 .owedcard{margin-top:10px;padding:14px 14px 6px}
 .owedrow{padding:9px 2px!important}
 .owedrow .pdot,.dueic .pdot{width:26px;height:26px;border-radius:50%;background:var(--lav);color:var(--peri);font-weight:700;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+
+/* ---------- v44: Money tab tidy-up ---------- */
+.addmoney{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:46px;margin-top:10px;border-radius:16px;background:var(--sun);color:#5a4200;font-weight:700;font-size:13px;box-shadow:0 4px 14px rgba(242,201,76,.35)}
+.addmoney:active{transform:scale(.98)}
+.donutcard{padding:16px}
+.donutwrap{position:relative;width:170px;height:170px;margin:0 auto 10px}
+.donut{width:100%;height:100%}
+.donut circle[data-dcat]{cursor:pointer;transition:stroke-width .2s}
+.donutmid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.donutmid b{font-size:18px;font-family:Nunito,Inter,sans-serif}
+.dlegend{display:flex;flex-direction:column}
+.drow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px 2px;border-top:1px dashed var(--line)}
+.drow:first-child{border-top:none}
+.drow .grow{flex:1;min-width:0}
+.drow .near b{color:#A57F12}.drow .over b{color:#D86A6A}
+.dpct{width:34px;text-align:right}
+.budin{width:96px!important;height:32px!important;line-height:32px!important;text-align:right}
+.recaptab{margin-top:6px}
+.recaptab .h1{font-size:19px!important}
