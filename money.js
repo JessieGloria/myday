@@ -216,10 +216,24 @@ function billsFor(m) {
   }).sort((a, b) => a.due.localeCompare(b.due));
 }
 // bills whose due date falls inside a pay period (a period can touch two calendar months)
+// where an open pay period is expected to end: the evening salary lands, the day before the next pay date
+function periodEnd(p) {
+  if (p.to) return p.to;
+  const nx = (S.payDates || []).map(x => x.date).sort().find(x => x > addDays(p.from, 2));
+  return nx ? addDays(nx, -2) : addDays(p.from, 31);
+}
 function billsInPeriod(p) {
-  const end = p.to || addDays(p.from, 31), out = [];
+  const end = periodEnd(p), out = [];
   for (let m = p.from.slice(0, 7); m <= end.slice(0, 7); m = nextMonth(m)) out.push(...billsFor(m));
-  return out.filter(x => x.due >= p.from && x.due <= end).sort((a, b) => a.due.localeCompare(b.due));
+  const inside = out.filter(x => x.due >= p.from && x.due <= end);
+  // still-unpaid bills from earlier pay periods come along as late (only for the current period)
+  let late = [];
+  if (p.from === curPeriod().from) {
+    const sc = salaryCat(), floor = (S.tx || []).filter(t => t.type === "income" && sc && t.category_id === sc.id).map(t => t.date).sort()[0] || p.from, back = [];
+    for (let m = addDays(p.from, -62).slice(0, 7); m <= p.from.slice(0, 7); m = nextMonth(m)) back.push(...billsFor(m));
+    late = back.filter(x => !x.paid && x.due < p.from && x.due >= floor && !(x.b.auto_pay && x.b.auto_from && x.due < x.b.auto_from)).map(x => ({ ...x, late: true }));
+  }
+  return [...late, ...inside].sort((a, b) => a.due.localeCompare(b.due));
 }
 const myPart = x => (x.b.people || []).length ? Number(x.b.share_amount || 0) : Number(x.b.amount || 0);
 const billMonth = b => (S.tab === "money" ? billsInPeriod(P()).find(x => x.b.id === b.id)?.m : null) || curMonth();
