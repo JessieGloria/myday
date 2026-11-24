@@ -311,22 +311,30 @@ function viewOverview() {
   <div class="between"><div class="lbl">Recent</div>${recent.length ? '<button class="small" style="color:var(--peri)" data-mv="history">See all</button>' : ""}</div>
   ${recent.length ? `<div class="list">${recent.map(txRow).join("")}</div>` : '<div class="empty">Use the buttons above to add spending or income, or send a screenshot.</div>'}`;
 }
-/* spending by category as a donut: your share only, tap a slice or row to see its spending */
+/* spending by category as a donut: your share only. Folded: donut + top 3. Open: full list; tap a category to see its spending right there */
 const DONUT = ["#8E92E0", "#9CBBA4", "#F2C94C", "#E8A0A0", "#2B3060", "#F4B6D2", "#9DD3C0", "#E5A23A", "#C9CBF3", "#7FA38A", "#D9A6E8", "#B08968"];
 function donut(cats, unc) {
   const rows = cats.filter(x => x.spent > 0).map((x, i) => ({ id: x.c.id, name: x.c.name, v: x.spent, b: x.budget, col: DONUT[i % DONUT.length] }));
   if (unc > 0) rows.push({ id: "none", name: "No category", v: unc, b: 0, col: "#C9CED9" });
-  const budgetOnly = cats.filter(x => !x.spent && x.budget);
+  rows.sort((a, b) => b.v - a.v);
+  const budgetOnly = cats.filter(x => !x.spent && x.budget).map(x => ({ id: x.c.id, name: x.c.name, v: 0, b: x.budget, col: "var(--line)" }));
   const tot = rows.reduce((s, x) => s + x.v, 0);
   if (!tot && !budgetOnly.length) return '<div class="empty">No spending yet this pay period.</div>';
+  const open = !!S.donutOpen, sel = open ? S.donutSel : null, selRow = [...rows, ...budgetOnly].find(x => x.id === sel);
   const R = 52, C = 2 * Math.PI * R; let off = 0;
-  const arcs = rows.map(x => { const len = x.v / tot * C, el = `<circle cx="70" cy="70" r="${R}" fill="none" stroke="${x.col}" stroke-width="20" stroke-dasharray="${Math.max(0, len - 1.5).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 70 70)" data-dcat="${x.id}"/>`; off += len; return el; }).join("");
+  const arcs = rows.map(x => { const len = x.v / tot * C, el = `<circle cx="70" cy="70" r="${R}" fill="none" stroke="${x.col}" stroke-width="${x.id === sel ? 24 : 20}" stroke-dasharray="${Math.max(0, len - 1.5).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 70 70)" data-dsel="${x.id}" class="${sel && x.id !== sel ? "dim" : ""}"/>`; off += len; return el; }).join("");
   const tone = x => !x.b ? "" : x.v > x.b ? "over" : x.v > x.b * .8 ? "near" : "";
-  return `<div class="card donutcard">
-    ${tot ? `<div class="donutwrap"><svg viewBox="0 0 140 140" class="donut" aria-hidden="true"><circle cx="70" cy="70" r="${R}" fill="none" stroke="var(--lav)" stroke-width="20"/>${arcs}</svg>
-      <div class="donutmid"><b>${rm0(tot)}</b><span class="tiny muted">spent</span></div></div>` : ""}
-    <div class="dlegend">${rows.map(x => `<button class="drow" data-dcat="${x.id}"><span class="accdot" style="background:${x.col}"></span><span class="grow small">${esc(x.name)}</span><span class="small ${tone(x)}"><b>${rm(x.v)}</b>${x.b ? ` <span class="muted">/ ${rm0(x.b)}</span>` : ""}</span><span class="tiny muted dpct">${Math.round(x.v / tot * 100)}%</span></button>`).join("")}
-      ${budgetOnly.map(x => `<button class="drow" data-dcat="${x.c.id}"><span class="accdot" style="background:var(--line)"></span><span class="grow small muted">${esc(x.c.name)}</span><span class="small muted">RM 0 / ${rm0(x.budget)}</span><span class="tiny muted dpct">0%</span></button>`).join("")}</div>
+  const mid = selRow ? `<b>${rm0(selRow.v)}</b><span class="tiny muted">${esc(selRow.name)}${selRow.b ? ` · of ${rm0(selRow.b)}` : ""}</span>` : `<b>${rm0(tot)}</b><span class="tiny muted">spent</span>`;
+  const txOf = id => periodTx(P()).filter(t => t.type === "expense" && (id === "none" ? !t.category_id : t.category_id === id));
+  const row = x => `<button class="drow ${x.id === sel ? "on" : ""}" data-dsel="${x.id}"><span class="accdot" style="background:${x.col}"></span><span class="grow small">${esc(x.name)}</span><span class="small ${tone(x)}"><b>${rm(x.v)}</b>${x.b ? ` <span class="muted">/ ${rm0(x.b)}</span>` : ""}</span><span class="tiny muted dpct">${tot ? Math.round(x.v / tot * 100) : 0}%</span></button>
+    ${x.id === sel ? `<div class="dtx">${txOf(x.id).length ? `<div class="list">${txOf(x.id).map(txRow).join("")}</div>` : '<div class="tiny muted" style="padding:6px 4px 10px">Nothing yet this pay period.</div>'}</div>` : ""}`;
+  const top = rows.slice(0, 3), more = rows.length + budgetOnly.length - top.length;
+  return `<div class="card donutcard ${open ? "open" : ""}">
+    ${open ? `<button class="dfold" data-dfold="1" aria-label="Fold">${I.right.replace("<svg", '<svg width="16" height="16"')}</button>` : ""}
+    ${tot ? `<div class="donutwrap" ${open ? "" : 'data-dopen="1"'}><svg viewBox="0 0 140 140" class="donut" aria-hidden="true"><circle cx="70" cy="70" r="${R}" fill="none" stroke="var(--lav)" stroke-width="20"/>${arcs}</svg>
+      <div class="donutmid">${mid}</div></div>` : ""}
+    ${open ? `<div class="dlegend">${[...rows, ...budgetOnly].map(row).join("")}</div>`
+      : `<button class="dtop" data-dopen="1">${top.map(x => `<span><span class="accdot" style="background:${x.col}"></span>${esc(x.name)} <b>${rm0(x.v)}</b></span>`).join("")}${more > 0 ? `<span class="dmore">+${more} more ⌄</span>` : ""}</button>`}
   </div>`;
 }
 function catSheet(id) {
@@ -397,7 +405,9 @@ function bindMoney() {
   document.querySelectorAll("[data-savacc]").forEach(b => b.onclick = () => savAccSheet(acc(b.dataset.savacc)));
   const mt = $("#mtotal"); if (mt) mt.onclick = () => { S.totalOpen = !S.totalOpen; render(); };
   const am = $("#maddmoney"); if (am) am.onclick = () => txSheet(null, { type: "expense" });
-  document.querySelectorAll("[data-dcat]").forEach(b => b.onclick = () => catSheet(b.dataset.dcat));
+  document.querySelectorAll("[data-dopen]").forEach(b => b.onclick = () => { S.donutOpen = true; render(); });
+  document.querySelectorAll("[data-dfold]").forEach(b => b.onclick = () => { S.donutOpen = false; S.donutSel = null; render(); });
+  document.querySelectorAll("[data-dsel]").forEach(b => b.onclick = e => { e.stopPropagation(); S.donutOpen = true; S.donutSel = S.donutSel === b.dataset.dsel ? null : b.dataset.dsel; render(); });
   const ms = $("#mstill"); if (ms) ms.onclick = () => { S.moneyFrom = null; S.moneyView = "bills"; render(); window.scrollTo(0, 0); };
   const ab = $("#addbill"); if (ab) ab.onclick = () => billSheet(null);
 }

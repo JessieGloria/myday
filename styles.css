@@ -716,3 +716,18 @@ body{background:transparent!important}
 .budin{width:96px!important;height:32px!important;line-height:32px!important;text-align:right}
 .recaptab{margin-top:6px}
 .recaptab .h1{font-size:19px!important}
+
+/* ---------- v45: fold-out donut ---------- */
+.donutcard{position:relative}
+.donutcard:not(.open) .donutwrap{width:140px;height:140px;cursor:pointer}
+.donut circle.dim{opacity:.3}
+.donut circle{transition:opacity .25s,stroke-width .25s}
+.dfold{position:absolute;right:12px;top:12px;width:32px;height:32px;border-radius:10px;background:var(--lav);color:var(--peri);display:flex;align-items:center;justify-content:center;transform:rotate(-90deg);z-index:2}
+.dtop{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 14px;width:100%;font-size:11px;color:var(--ink2);padding:2px 0}
+.dtop>span{display:inline-flex;align-items:center;gap:5px}.dtop b{color:var(--ink);font-weight:600}
+.dtop .accdot{width:7px;height:7px}
+.dmore{color:var(--peri);font-weight:600}
+.drow.on{background:var(--lav);border-radius:12px}
+.dtx{margin:4px 0 8px;animation:fade .3s ease}
+.dtx .list{box-shadow:none}
+.donutmid span{max-width:90px;text-align:center;line-height:1.25}
