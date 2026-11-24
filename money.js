@@ -188,11 +188,11 @@ function payCard(p) {
 // a "card" account with a credit limit is a real credit card; one without (like SPayLater) is just a bill to pay
 const isCredit = a => Number(a.credit_limit || 0) > 0;
 function cardTile(x) {
-  const lim = Number(x.a.credit_limit || 0), inst = instLeft(x.a), used = Math.max(0, x.owed) + inst, avail = lim - used;
+  const lim = Number(x.a.credit_limit || 0), inst = instLeft(x.a), hold = Number(x.a.limit_hold || 0), used = Math.max(0, x.owed) + inst + hold, avail = lim - used;
   return `<div class="card cardtile" style="margin-top:10px">
     <div class="between"><div><div class="small muted">${esc(x.a.name)}</div><div class="h2">${rm(x.owed)} <span class="small muted" style="font-weight:400">${isCredit(x.a) ? "owed" : "to pay"}</span></div></div><button class="btn" data-paycard="${x.a.id}">${isCredit(x.a) ? "Pay card" : "Pay bill"}</button></div>
     ${lim ? `<div class="limbar"><i class="lo" style="width:${Math.min(100, Math.max(0, x.owed) / lim * 100)}%"></i><i class="li" style="width:${Math.min(100, inst / lim * 100)}%"></i></div>
-    <div class="between tiny"><span><span class="accdot" style="background:#E8A0A0"></span> Owed ${rm0(Math.max(0, x.owed))}${inst ? ` <span class="accdot" style="background:#C9CBF3;margin-left:6px"></span> Instalments left ${rm0(inst)}` : ""}</span></div>
+    <div class="between tiny"><span><span class="accdot" style="background:#E8A0A0"></span> Owed ${rm0(Math.max(0, x.owed))}${inst ? ` <span class="accdot" style="background:#C9CBF3;margin-left:6px"></span> Instalments left ${rm0(inst)}` : ""}${hold ? ` <span class="accdot" style="background:var(--ink3);margin-left:6px"></span> Bank hold ${rm(hold)}` : ""}</span></div>
     <div class="small" style="margin-top:6px">Available <b>${rm(avail)}</b> <span class="muted">of ${rm0(lim)}</span></div>` : ""}
   </div>`;
 }
@@ -240,7 +240,14 @@ const myPart = x => (x.b.people || []).length ? Number(x.b.share_amount || 0) : 
 const billMonth = b => (S.tab === "money" ? billsInPeriod(P()).find(x => x.b.id === b.id)?.m : null) || curMonth();
 const billPill = x => x.status === "paid" ? `<span class="pill sage">Paid</span>` : x.status === "late" ? `<span class="pill rose">${-x.days} day${x.days === -1 ? "" : "s"} late</span>` : x.status === "soon" ? `<span class="pill warn">${x.days === 0 ? "Today" : x.days === 1 ? "Tomorrow" : `in ${x.days} days`}</span>` : `<span class="pill">${fmtShort(x.due)}</span>`;
 window.MD.moneyToday = () => sum(S.tx.filter(t => t.type === "expense" && t.date === today()), myAmt);
-window.MD.billsDueSoon = () => { const w = new Set(rentWaiting().map(r => r.x.b.id)); return billsFor(curMonth()).filter(x => (x.status === "late" || x.status === "soon") && !w.has(x.b.id)); };
+// bills to show on Today: anything late (last month included) and anything due in the next 7 days, even if that's next month
+function billsAround() {
+  const m = curMonth(), prev = (() => { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo - 2, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; })();
+  const sc = salaryCat(), floor = (S.tx || []).filter(t => t.type === "income" && sc && t.category_id === sc.id).map(t => t.date).sort()[0] || today();
+  return [...billsFor(prev), ...billsFor(m), ...billsFor(nextMonth(m))]
+    .filter(x => !x.paid && x.due >= floor && !(x.b.auto_pay && x.b.auto_from && x.due < x.b.auto_from));
+}
+window.MD.billsDueSoon = () => { const w = new Set(rentWaiting().map(r => r.x.b.id + r.x.m)); return billsAround().filter(x => (x.status === "late" || x.status === "soon") && !w.has(x.b.id + x.m)); };
 
 /* ---------- views ---------- */
 function txRow(t) {
@@ -701,8 +708,7 @@ function salaryDue() {
   return !salaryIn(m);
 }
 function rentWaiting() {
-  const m = today().slice(0, 7);
-  return billsFor(m).filter(x => (x.b.people || []).length && !x.paid && x.days <= 7).map(x => ({ x, waiting: x.coll.filter(c => !c.tx).map(c => c.name) })).filter(r => r.waiting.length);
+  return billsAround().filter(x => (x.b.people || []).length && !x.paid && x.days <= 7).map(x => ({ x, waiting: x.coll.filter(c => !c.tx).map(c => c.name) })).filter(r => r.waiting.length);
 }
 function cardsToPay() {
   return cardOwed().filter(c => c.owed > 0.004 && !snoozed("card" + c.a.id)).map(c => {
